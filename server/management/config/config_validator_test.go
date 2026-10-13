@@ -59,8 +59,20 @@ func TestConfigValidate(t *testing.T) {
 		{"missing client id", func(c *Config) { c.OIDC.ClientID = "" }, "oidc.clientId"},
 		{"missing client secret", func(c *Config) { c.OIDC.ClientSecret = "" }, "oidc.clientSecret"},
 		{"missing redirect url", func(c *Config) { c.OIDC.RedirectURL = "" }, "oidc.redirectUrl"},
+		{"blank db url", func(c *Config) { c.DB.URL = "  \t" }, "db.url"},
+		{"blank client secret", func(c *Config) { c.OIDC.ClientSecret = " " }, "oidc.clientSecret"},
 		{"missing jwt secret", func(c *Config) { c.Auth.JWTSecret = "" }, "auth.jwtSecret is required"},
+		{"blank jwt secret", func(c *Config) { c.Auth.JWTSecret = strings.Repeat(" ", 32) }, "auth.jwtSecret is required"},
 		{"short jwt secret", func(c *Config) { c.Auth.JWTSecret = "too-short" }, "at least 32 chars"},
+		{"zero shutdown timeout", func(c *Config) { c.Server.ShutdownTimeout = 0 }, "server.shutdownTimeout"},
+		{"zero max conns", func(c *Config) { c.DB.MaxConns = 0 }, "db.maxConns"},
+		{"negative min conns", func(c *Config) { c.DB.MinConns = -1 }, "db.minConns"},
+		{"min conns above max", func(c *Config) { c.DB.MinConns = c.DB.MaxConns + 1 }, "db.minConns"},
+		{"zero conn max lifetime", func(c *Config) { c.DB.ConnMaxLifetime = 0 }, "db.connMaxLifetime"},
+		{"scopes without openid", func(c *Config) { c.OIDC.Scopes = []string{"profile", "email"} }, "oidc.scopes"},
+		{"zero session max age", func(c *Config) { c.Auth.SessionMaxAge = 0 }, "auth.sessionMaxAge"},
+		{"unknown log level", func(c *Config) { c.Log.Level = "verbose" }, "log.level"},
+		{"unknown log format", func(c *Config) { c.Log.Format = "xml" }, "log.format"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
