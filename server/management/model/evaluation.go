@@ -50,7 +50,9 @@ type EvaluationResult struct {
 // the result's Reason/ErrorCode rather than as an error — that is what a test
 // endpoint should surface. A non-nil error is returned only when the stored
 // payload itself cannot be parsed.
-func EvaluateFlag(flagName string, payload, enrichment json.RawMessage, disabled bool, req *EvaluateFlagRequest) (*EvaluationResult, error) {
+func EvaluateFlag(
+	flagName string, payload, enrichment json.RawMessage, disabled bool, req *EvaluateFlagRequest,
+) (*EvaluationResult, error) {
 	dto, err := ParseFlagPayload(payload)
 	if err != nil {
 		return nil, ValidationErrors{{Field: "payload", Message: "invalid payload JSON"}}
