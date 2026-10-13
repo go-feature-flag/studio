@@ -19,10 +19,9 @@ const EnvPrefix = "GOFF_MGMT_"
 func Load(flags *pflag.FlagSet) (*Config, error) {
 	k := koanf.New(".")
 
-	cfg := Default()
-	if err := k.Load(confmap.Provider(structToMap(cfg), "."), nil); err != nil {
-		return nil, fmt.Errorf("load defaults: %w", err)
-	}
+	// The confmap, env and posflag providers never return an error and koanf
+	// only fails a merge with StrictMerge (off), so those Loads can't fail.
+	_ = k.Load(confmap.Provider(structToMap(Default()), "."), nil)
 
 	if flags != nil {
 		if cfgPath, _ := flags.GetString("config"); cfgPath != "" {
@@ -37,9 +36,7 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 			for key, v := range fk.All() {
 				lower[strings.ToLower(key)] = v
 			}
-			if err := k.Load(confmap.Provider(lower, "."), nil); err != nil {
-				return nil, fmt.Errorf("load config file %s: %w", cfgPath, err)
-			}
+			_ = k.Load(confmap.Provider(lower, "."), nil)
 		}
 	}
 
@@ -48,14 +45,10 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 		s = strings.ToLower(s)
 		return strings.ReplaceAll(s, "_", ".")
 	}
-	if err := k.Load(env.Provider(EnvPrefix, ".", envCb), nil); err != nil {
-		return nil, fmt.Errorf("load env: %w", err)
-	}
+	_ = k.Load(env.Provider(EnvPrefix, ".", envCb), nil)
 
 	if flags != nil {
-		if err := k.Load(posflag.Provider(flags, ".", k), nil); err != nil {
-			return nil, fmt.Errorf("load flags: %w", err)
-		}
+		_ = k.Load(posflag.Provider(flags, ".", k), nil)
 	}
 
 	// koanf's default hooks plus string->slice, so comma-separated env values

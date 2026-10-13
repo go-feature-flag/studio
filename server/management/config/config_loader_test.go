@@ -80,6 +80,11 @@ func TestLoad(t *testing.T) {
 			wantErr: "load config file",
 		},
 		{
+			name:    "invalid value fails unmarshal",
+			env:     map[string]string{"GOFF_MGMT_SERVER_PORT": "notaport"},
+			wantErr: "unmarshal config",
+		},
+		{
 			name: "env overrides config file",
 			yaml: "server:\n  port: 6543\n",
 			env:  map[string]string{"GOFF_MGMT_SERVER_PORT": "9090"},
