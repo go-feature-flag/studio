@@ -70,6 +70,8 @@ func TestEvaluateFlag(t *testing.T) {
 		res, err := EvaluateFlag("my-flag", boolPayload, nil, true, req)
 		require.NoError(t, err)
 		assert.Equal(t, "DISABLED", res.Reason)
+		assert.Nil(t, res.Value)
+		assert.Equal(t, "SdkDefault", res.VariationType)
 	})
 
 	t.Run("integer flag returns an int value", func(t *testing.T) {
@@ -134,31 +136,27 @@ func TestEvaluateFlag(t *testing.T) {
 		assert.Equal(t, false, res.Value)
 	})
 
-	t.Run("invalid payload returns a validation error", func(t *testing.T) {
+	t.Run("unparseable stored payload is a server error, not a validation error", func(t *testing.T) {
 		req := &EvaluateFlagRequest{
 			EvaluationContext: EvaluationContextInput{TargetingKey: "user-6"},
 		}
 		_, err := EvaluateFlag("bad-flag", json.RawMessage(`not-json`), nil, false, req)
+		require.Error(t, err)
 		var verrs ValidationErrors
-		require.ErrorAs(t, err, &verrs)
+		assert.NotErrorAs(t, err, &verrs)
 	})
-}
 
-func TestCoreExpectedType(t *testing.T) {
-	tests := []struct {
-		inferred string
-		want     string
-	}{
-		{"int", "int"},
-		{"float", "float"},
-		{"string", "string"},
-		{"boolean", "bool"},
-		{"json", "object"},
-		{"unknown", "object"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.inferred, func(t *testing.T) {
-			assert.Equal(t, tt.want, coreExpectedType(tt.inferred))
-		})
-	}
+	t.Run("enrichment wins over a colliding request attribute", func(t *testing.T) {
+		enrichment := json.RawMessage(`{"email": "someone@example.com"}`)
+		req := &EvaluateFlagRequest{
+			EvaluationContext: EvaluationContextInput{
+				TargetingKey: "user-9",
+				Attributes:   map[string]any{"email": "admin@example.com"},
+			},
+		}
+		res, err := EvaluateFlag("my-flag", boolPayload, enrichment, false, req)
+		require.NoError(t, err)
+		assert.Equal(t, "DEFAULT", res.Reason)
+		assert.Equal(t, false, res.Value)
+	})
 }
