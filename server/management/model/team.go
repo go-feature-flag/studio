@@ -18,9 +18,9 @@ func (r Role) IsValid() bool {
 	return false
 }
 
-func (r Role) AtLeast(min Role) bool {
+func (r Role) AtLeast(required Role) bool {
 	rank := map[Role]int{RoleViewer: 1, RoleEditor: 2, RoleAdmin: 3}
-	return rank[r] >= rank[min]
+	return rank[r] >= rank[required]
 }
 
 type Team struct {
