@@ -3,8 +3,8 @@ package config
 import "fmt"
 
 func (c *Config) Validate() error {
-	if c.Server.Port <= 0 {
-		return fmt.Errorf("server.port must be > 0")
+	if c.Server.Port <= 0 || c.Server.Port > 65535 {
+		return fmt.Errorf("server.port must be between 1 and 65535")
 	}
 	if c.DB.URL == "" {
 		return fmt.Errorf("db.url is required")
