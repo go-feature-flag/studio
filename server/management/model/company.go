@@ -19,7 +19,7 @@ func (r CompanyRole) IsValid() bool {
 
 func (r CompanyRole) AtLeast(required CompanyRole) bool {
 	rank := map[CompanyRole]int{CompanyRoleMember: 1, CompanyRoleAdmin: 2}
-	return rank[r] >= rank[required]
+	return rank[required] > 0 && rank[r] >= rank[required]
 }
 
 // AsTeamRole maps a company role to the equivalent team role for inheritance.

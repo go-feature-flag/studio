@@ -36,6 +36,9 @@ func TestCompanyRole_AtLeast(t *testing.T) {
 		{"admin >= admin", CompanyRoleAdmin, CompanyRoleAdmin, true},
 		{"member >= member", CompanyRoleMember, CompanyRoleMember, true},
 		{"member < admin", CompanyRoleMember, CompanyRoleAdmin, false},
+		{"empty < member", CompanyRole(""), CompanyRoleMember, false},
+		{"admin vs unknown", CompanyRoleAdmin, CompanyRole("owner"), false},
+		{"empty vs empty", CompanyRole(""), CompanyRole(""), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
