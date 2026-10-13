@@ -33,7 +33,8 @@ test: ## Run the tests of the project and export the coverage in <module>/covera
 ## Lint:
 lint: ## Use golangci-lint on all the modules of the project
 	mkdir -p ./bin
-	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin
+	curl -sSfL https://golangci-lint.run/install.sh -o ./bin/install-golangci-lint.sh
+	sh ./bin/install-golangci-lint.sh -b ./bin
 	@$(foreach module, $(ALL_GO_MOD_DIRS), (echo "→ Linting $(module)"; cd $(module) && $(CURDIR)/bin/golangci-lint run --timeout=5m --config $(CURDIR)/.golangci.yml ./...) &&) true
 
 ## Help:
