@@ -33,6 +33,19 @@ func TestConfigValidate(t *testing.T) {
 		assert.NoError(t, c.Validate())
 	})
 
+	t.Run("reports all errors at once", func(t *testing.T) {
+		c := validConfig()
+		c.DB.URL = ""
+		c.OIDC.ClientID = ""
+		c.Auth.JWTSecret = ""
+		err := c.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "db.url")
+		assert.Contains(t, err.Error(), "oidc.clientId")
+		assert.Contains(t, err.Error(), "auth.jwtSecret is required")
+		assert.NotContains(t, err.Error(), "at least 32 chars")
+	})
+
 	tests := []struct {
 		name    string
 		mutate  func(c *Config)
