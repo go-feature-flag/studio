@@ -46,24 +46,44 @@ func (r *FlagRepo) Create(ctx context.Context, tx pgx.Tx, flagsetID, name string
 }
 
 func (r *FlagRepo) GetByID(ctx context.Context, id string) (*model.Flag, error) {
+	return getFlag(ctx, r.db.Pool, id)
+}
+
+// GetForUpdate reads the live flag inside tx and locks its row until tx ends,
+// so a save works from the current version and a concurrent delete or save
+// waits. Returns (nil, nil) when the flag is missing or deleted.
+func (r *FlagRepo) GetForUpdate(ctx context.Context, tx pgx.Tx, id string) (*model.Flag, error) {
+	// Lock first, then read in a second statement: a single SELECT … FOR
+	// UPDATE OF f that waited on the lock would re-check only the flag row and
+	// keep the joined version from its old snapshot (NULL for a version
+	// committed meanwhile).
+	// A malformed id is returned as an error, not as not found: it aborts tx.
+	tag, err := tx.Exec(ctx, `SELECT 1 FROM flags WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, id)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, nil
+	}
+	return getFlag(ctx, tx, id)
+}
+
+func getFlag(ctx context.Context, q queryRower, id string) (*model.Flag, error) {
 	var f model.Flag
-	var payload json.RawMessage
-	var verNum *int
-	err := r.db.Pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		SELECT f.id, f.flagset_id, f.name, f.current_version_id, f.disabled, f.created_at, f.updated_at,
 		       fv.payload, fv.version_number
 		FROM flags f
 		LEFT JOIN flag_versions fv ON fv.id = f.current_version_id
 		WHERE f.id = $1 AND f.deleted_at IS NULL`, id,
-	).Scan(&f.ID, &f.FlagsetID, &f.Name, &f.CurrentVersionID, &f.Disabled, &f.CreatedAt, &f.UpdatedAt, &payload, &verNum)
+	).Scan(&f.ID, &f.FlagsetID, &f.Name, &f.CurrentVersionID, &f.Disabled, &f.CreatedAt, &f.UpdatedAt,
+		&f.Payload, &f.CurrentVersion)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	f.Payload = payload
-	f.CurrentVersion = verNum
 	return &f, nil
 }
 

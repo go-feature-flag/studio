@@ -630,3 +630,57 @@ func TestFlagRepoQueryErrors(t *testing.T) {
 	_, err = versions.Insert(t.Context(), tx, id, nil, "", nil)
 	assert.ErrorContains(t, err, "25P02")
 }
+
+func TestFlagRepoGetForUpdate(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagRepo(db)
+	ctx := t.Context()
+	fs := testutil.SeedFlagset(t, db, testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "P").ID, "prod")
+	live := testutil.SeedFlag(t, db, fs.ID, "live", nil, nil)
+	gone := testutil.SeedFlag(t, db, fs.ID, "gone", nil, nil)
+	require.NoError(t, repo.SoftDelete(ctx, gone.ID))
+
+	tests := []struct {
+		name     string
+		id       string
+		wantFlag bool
+	}{
+		{"live flag with its current version", live.ID, true},
+		{"deleted flag", gone.ID, false},
+		{"unknown flag", "00000000-0000-0000-0000-000000000000", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, pgx.BeginFunc(ctx, db.Pool, func(tx pgx.Tx) error {
+				f, err := repo.GetForUpdate(ctx, tx, tt.id)
+				require.NoError(t, err)
+				if !tt.wantFlag {
+					assert.Nil(t, f)
+					return nil
+				}
+				require.NotNil(t, f)
+				assert.Equal(t, 1, *f.CurrentVersion)
+				assert.JSONEq(t, testutil.DefaultFlagPayload, string(f.Payload))
+				return nil
+			}))
+		})
+	}
+
+	t.Run("malformed id aborts the tx and is reported", func(t *testing.T) {
+		tx, err := db.Pool.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		_, err = repo.GetForUpdate(ctx, tx, "abc")
+		assert.ErrorContains(t, err, "22P02")
+	})
+
+	t.Run("aborted tx", func(t *testing.T) {
+		tx, err := db.Pool.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		_, err = tx.Exec(ctx, `SELECT 1/0`)
+		require.Error(t, err)
+		_, err = repo.GetForUpdate(ctx, tx, live.ID)
+		assert.ErrorContains(t, err, "25P02")
+	})
+}
