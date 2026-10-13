@@ -122,7 +122,7 @@ func runMigrations(connStr string) error {
 	if err != nil {
 		return err
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	goose.SetBaseFS(nil)
 	if err := goose.SetDialect("postgres"); err != nil {
@@ -135,7 +135,7 @@ func runMigrations(connStr string) error {
 // migrationsDir resolves the migrations directory relative to this source file
 // so it works regardless of the test's working directory.
 func migrationsDir() string {
-	_, thisFile, _, _ := runtime.Caller(0)
+	_, thisFile, _, _ := runtime.Caller(0) //nolint:dogsled // only the file path is needed
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "db", "migrations")
 }
 

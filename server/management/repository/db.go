@@ -62,18 +62,6 @@ func (d *DB) Close() {
 	}
 }
 
-// execOne runs a write that must touch at least one row; zero rows → ErrNotFound.
-func (d *DB) execOne(ctx context.Context, q string, args ...any) error {
-	ct, err := d.Pool.Exec(ctx, q, args...)
-	if err != nil {
-		return err
-	}
-	if ct.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
 // isNoRows also covers a malformed id (pg 22P02, e.g. "abc" for a uuid column):
 // it can't match a row, so lookups report not found instead of a server error.
 func isNoRows(err error) bool {

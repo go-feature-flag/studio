@@ -13,7 +13,8 @@ type UserRepo struct{ db *DB }
 
 func NewUserRepo(db *DB) *UserRepo { return &UserRepo{db: db} }
 
-const userCols = `id, email, name, avatar_url, oidc_sub, is_super_admin, company_id, company_role, created_at, updated_at, last_login_at`
+const userCols = `id, email, name, avatar_url, oidc_sub, is_super_admin, company_id, company_role,
+	created_at, updated_at, last_login_at`
 
 func scanUser(row pgx.Row, u *model.User) error {
 	return row.Scan(
@@ -47,7 +48,9 @@ var ErrIdentityMismatch = errors.New("account bound to a different identity")
 
 // UpsertFromOIDC binds the account to the first sub seen for the email; super
 // admin follows the config on every login.
-func (r *UserRepo) UpsertFromOIDC(ctx context.Context, email, name, avatarURL, sub string, isSuperAdmin bool) (*model.User, error) {
+func (r *UserRepo) UpsertFromOIDC(
+	ctx context.Context, email, name, avatarURL, sub string, isSuperAdmin bool,
+) (*model.User, error) {
 	q := `
 		INSERT INTO users (email, name, avatar_url, oidc_sub, is_super_admin, last_login_at)
 		VALUES ($1, $2, $3, $4, $5, NOW())
@@ -61,7 +64,8 @@ func (r *UserRepo) UpsertFromOIDC(ctx context.Context, email, name, avatarURL, s
 		WHERE users.oidc_sub IS NULL OR users.oidc_sub = EXCLUDED.oidc_sub
 		RETURNING ` + userCols
 	var u model.User
-	if err := scanUser(r.db.Pool.QueryRow(ctx, q, strings.ToLower(email), name, avatarURL, sub, isSuperAdmin), &u); err != nil {
+	row := r.db.Pool.QueryRow(ctx, q, strings.ToLower(email), name, avatarURL, sub, isSuperAdmin)
+	if err := scanUser(row, &u); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrIdentityMismatch
 		}
