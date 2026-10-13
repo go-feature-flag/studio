@@ -21,6 +21,7 @@ func TestValidateFlagName(t *testing.T) {
 		{"empty", "", true},
 		{"max length ok", strings.Repeat("a", 200), false},
 		{"too long", strings.Repeat("a", 201), true},
+		{"multibyte counts characters", strings.Repeat("旗", 200), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,6 +89,60 @@ func TestValidateFlagPayload(t *testing.T) {
 			dto: coredto.DTO{
 				Variations:  &twoVars,
 				DefaultRule: &flag.Rule{Percentages: &map[string]float64{"on": 50, "off": 30}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "defaultRule percentages all zero",
+			dto: coredto.DTO{
+				Variations:  &twoVars,
+				DefaultRule: &flag.Rule{Percentages: &map[string]float64{"on": 0, "off": 0}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "defaultRule percentage out of range",
+			dto: coredto.DTO{
+				Variations:  &twoVars,
+				DefaultRule: &flag.Rule{Percentages: &map[string]float64{"on": 150, "off": -50}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "targeting rule percentages not summing to 100",
+			dto: coredto.DTO{
+				Variations:  &twoVars,
+				DefaultRule: defaultRule,
+				Rules: &[]flag.Rule{
+					{Query: new(`country eq "FR"`), Percentages: &map[string]float64{"on": 50, "off": 30}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "defaultRule names a missing variation",
+			dto: coredto.DTO{
+				Variations:  &twoVars,
+				DefaultRule: &flag.Rule{VariationResult: new("missing")},
+			},
+			wantErr: true,
+		},
+		{
+			name: "targeting percentage names a missing variation",
+			dto: coredto.DTO{
+				Variations:  &twoVars,
+				DefaultRule: defaultRule,
+				Rules: &[]flag.Rule{
+					{Query: new(`country eq "FR"`), Percentages: &map[string]float64{"on": 50, "missing": 50}},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "variations of mixed types",
+			dto: coredto.DTO{
+				Variations:  &map[string]*any{"on": any3(true), "off": any3("off")},
+				DefaultRule: defaultRule,
 			},
 			wantErr: true,
 		},
@@ -162,6 +217,8 @@ func TestInferFlagType(t *testing.T) {
 		{"int", `{"variations":{"a":1,"b":2}}`, "int"},
 		{"float", `{"variations":{"a":1.5,"b":2.5}}`, "float"},
 		{"mixed int/float is float", `{"variations":{"a":1,"b":2.5}}`, "float"},
+		{"mixed float/int is float", `{"variations":{"a":2.5,"b":1}}`, "float"},
+		{"mixed types are unknown", `{"variations":{"on":true,"off":"off"}}`, "unknown"},
 		{"json object", `{"variations":{"a":{"k":"v"},"b":{"k":"w"}}}`, "json"},
 		{"json array", `{"variations":{"a":[1,2],"b":[3]}}`, "json"},
 		{"no variations", `{"defaultRule":{}}`, "unknown"},

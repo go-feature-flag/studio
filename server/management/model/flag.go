@@ -145,7 +145,9 @@ const (
 // InferFlagType derives a flag's type from its version payload variations.
 // Type is not stored explicitly: it is the JSON type of the variation values.
 // Numbers are split into "int" and "float" (GOFF distinguishes the two): a
-// numeric flag is "int" only when every variation value is integral.
+// numeric flag is "int" only when every variation value is integral. Variations
+// of mixed types (which ValidateFlagPayload rejects) yield "unknown", so the
+// result never depends on map iteration order.
 func InferFlagType(payload json.RawMessage) string {
 	if len(payload) == 0 {
 		return flagTypeUnknown
@@ -156,26 +158,34 @@ func InferFlagType(payload json.RawMessage) string {
 	if err := json.Unmarshal(payload, &p); err != nil || len(p.Variations) == 0 {
 		return flagTypeUnknown
 	}
-	allInt := true
+	typ := ""
 	for _, v := range p.Variations {
+		t := flagTypeJSON
 		switch x := v.(type) {
 		case bool:
-			return flagTypeBoolean
+			t = flagTypeBoolean
 		case string:
-			return flagTypeString
+			t = flagTypeString
 		case float64:
+			t = flagTypeInt
 			if x != math.Trunc(x) {
-				allInt = false
+				t = flagTypeFloat
 			}
+		}
+		switch {
+		case typ == "" || typ == t:
+			typ = t
+		case isNumberType(typ) && isNumberType(t):
+			typ = flagTypeFloat // int and float variations mix into float
 		default:
-			return flagTypeJSON
+			return flagTypeUnknown
 		}
 	}
-	// Every non-number returned above, so all variations are numbers.
-	if allInt {
-		return flagTypeInt
-	}
-	return flagTypeFloat
+	return typ
+}
+
+func isNumberType(t string) bool {
+	return t == flagTypeInt || t == flagTypeFloat
 }
 
 // FlagSummaryFromPayload extracts, for the team-wide flags list, the ordered
@@ -559,7 +569,7 @@ func ValidateFlagName(name string) ValidationErrors {
 	if name == "" {
 		errs = append(errs, ValidationError{Field: field, Message: "flag name is required"})
 	}
-	if len(name) > 200 {
+	if utf8.RuneCountInString(name) > 200 {
 		errs = append(errs, ValidationError{Field: field, Message: "flag name max 200 chars"})
 	}
 	return errs
@@ -573,16 +583,7 @@ func ValidateFlagPayload(p coredto.DTO) ValidationErrors {
 	if p.DefaultRule == nil {
 		errs = append(errs, ValidationError{Field: "payload.defaultRule", Message: "defaultRule is required"})
 	} else if p.DefaultRule.Percentages != nil {
-		var sum float64
-		for _, v := range *p.DefaultRule.Percentages {
-			sum += v
-		}
-		if sum > 0 && (sum < 99.999 || sum > 100.001) {
-			errs = append(errs, ValidationError{
-				Field:   "payload.defaultRule.percentage",
-				Message: fmt.Sprintf("percentages must sum to 100, got %.2f", sum),
-			})
-		}
+		errs = append(errs, validatePercentages("payload.defaultRule.percentage", *p.DefaultRule.Percentages)...)
 	}
 	if p.Rules != nil {
 		if len(*p.Rules) > maxTargetingRules {
@@ -601,9 +602,37 @@ func ValidateFlagPayload(p coredto.DTO) ValidationErrors {
 			case r.GetQueryFormat() == flag.JSONLogicQueryFormat && usesJSONLogicReduce(*r.Query):
 				errs = append(errs, ValidationError{Field: field, Message: "jsonlogic reduce is not allowed"})
 			}
+			if r.Percentages != nil {
+				errs = append(errs, validatePercentages(fmt.Sprintf("payload.targeting[%d].percentage", i), *r.Percentages)...)
+			}
+		}
+	}
+	// GOFF's own validation catches what the relay proxy would reject: mixed
+	// variation types, rule outcomes naming a missing variation, and invalid
+	// queries. It runs last so the cost bounds above hold before queries are parsed.
+	if len(errs) == 0 {
+		internal := p.Convert()
+		if err := internal.IsValid(); err != nil {
+			errs = append(errs, ValidationError{Field: "payload", Message: err.Error()})
 		}
 	}
 	return errs
+}
+
+// validatePercentages checks a traffic split: every share within [0, 100] and
+// a total of 100.
+func validatePercentages(field string, pcts map[string]float64) ValidationErrors {
+	var sum float64
+	for name, v := range pcts {
+		if v < 0 || v > 100 {
+			return ValidationErrors{{Field: field, Message: fmt.Sprintf("percentage for %q must be between 0 and 100", name)}}
+		}
+		sum += v
+	}
+	if sum < 99.999 || sum > 100.001 {
+		return ValidationErrors{{Field: field, Message: fmt.Sprintf("percentages must sum to 100, got %.2f", sum)}}
+	}
+	return nil
 }
 
 // Bounds on targeting-rule evaluation cost (security audit finding #3). Rules
