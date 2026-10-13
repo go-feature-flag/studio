@@ -18,9 +18,9 @@ var (
 	errInvalidRole = model.ValidationError{Field: "role", Message: "invalid role"}
 )
 
-// memberRole is the audit payload of a team member role change.
+// memberRole is the audit payload of a team or company member role change.
 type memberRole struct {
-	Role model.Role `json:"role"`
+	Role string `json:"role"`
 }
 
 type TeamService struct {
@@ -232,7 +232,7 @@ func (s *TeamService) AddMember(
 	}
 	added := prev == ""
 	if !added {
-		in.Action, in.Before, in.After = model.AuditActionUpdate, memberRole{prev}, memberRole{req.Role}
+		in.Action, in.Before, in.After = model.AuditActionUpdate, memberRole{string(prev)}, memberRole{string(req.Role)}
 	}
 	_ = s.audit.Record(ctx, nil, in)
 	return m, added, nil
@@ -249,7 +249,7 @@ func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID 
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
 		Action: model.AuditActionUpdate, TargetType: model.AuditTargetTeamMember, TargetID: userID,
-		Before: memberRole{prev}, After: memberRole{role},
+		Before: memberRole{string(prev)}, After: memberRole{string(role)},
 	})
 	return nil
 }
@@ -262,7 +262,7 @@ func (s *TeamService) RemoveMember(ctx context.Context, actorID, teamID, userID 
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
 		Action: model.AuditActionDelete, TargetType: model.AuditTargetTeamMember, TargetID: userID,
-		Before: memberRole{prev},
+		Before: memberRole{string(prev)},
 	})
 	return nil
 }

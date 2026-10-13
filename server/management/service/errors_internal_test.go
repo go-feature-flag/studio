@@ -20,9 +20,16 @@ func TestTeamWriteError(t *testing.T) {
 		{"name taken", repository.ErrTeamNameTaken, ErrConflict},
 		{"other errors pass through", other, other},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.ErrorIs(t, teamWriteError(tt.in), tt.want)
 		})
 	}
+}
+
+func TestCompanyWriteError(t *testing.T) {
+	other := errors.New("boom")
+	assert.ErrorIs(t, companyWriteError(repository.ErrNotFound), ErrNotFound)
+	assert.ErrorIs(t, companyWriteError(other), other)
 }
