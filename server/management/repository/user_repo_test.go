@@ -2,6 +2,8 @@ package repository_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
@@ -82,6 +84,22 @@ func TestUserRepoUpsertFromOIDC(t *testing.T) {
 			wantEmail: "taken@example.com", wantName: "Carol", wantSub: "sub-carol",
 			sameAccount: true,
 		},
+		{
+			name:      "blank sub cannot take over a blank-sub account",
+			before:    []oidcLogin{{"alice@example.com", "Alice", "sub-1", false}},
+			login:     oidcLogin{"mallory@example.com", "Mallory", " ", true},
+			wantErr:   repository.ErrMissingIdentity,
+			wantEmail: "alice@example.com", wantName: "Alice", wantSub: "sub-1",
+			sameAccount: true,
+		},
+		{
+			name:      "blank email is rejected",
+			before:    []oidcLogin{{"alice@example.com", "Alice", "sub-1", false}},
+			login:     oidcLogin{"  ", "Alice", "sub-1", true},
+			wantErr:   repository.ErrMissingIdentity,
+			wantEmail: "alice@example.com", wantName: "Alice", wantSub: "sub-1",
+			sameAccount: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -125,6 +143,33 @@ func TestUserRepoUpsertFromOIDC(t *testing.T) {
 				assert.Equal(t, first.ID, stored.ID)
 			}
 		})
+	}
+}
+
+// Simultaneous first logins (double click, retried callback) race on the
+// oidc_sub unique index; every one must resolve to the same account.
+func TestUserRepoUpsertFromOIDCConcurrentFirstLogin(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewUserRepo(db)
+	for round := range 10 {
+		email, sub := fmt.Sprintf("user%d@example.com", round), fmt.Sprintf("sub-%d", round)
+		ids := make([]string, 8)
+		errs := make([]error, 8)
+		var wg sync.WaitGroup
+		for i := range ids {
+			wg.Go(func() {
+				u, err := repo.UpsertFromOIDC(t.Context(), email, "User", "", sub, false)
+				errs[i] = err
+				if u != nil {
+					ids[i] = u.ID
+				}
+			})
+		}
+		wg.Wait()
+		for i := range ids {
+			require.NoError(t, errs[i], "round %d login %d", round, i)
+			assert.Equal(t, ids[0], ids[i], "round %d login %d", round, i)
+		}
 	}
 }
 

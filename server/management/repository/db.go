@@ -36,7 +36,7 @@ func NewDB(ctx context.Context, cfg config.DBConfig) (*DB, error) {
 
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	pool, err := pgxpool.NewWithConfig(pingCtx, pcfg)
+	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect db: %w", err)
 	}

@@ -47,13 +47,33 @@ func (r *UserRepo) scanOne(ctx context.Context, q string, args ...any) (*model.U
 // different OIDC subject.
 var ErrIdentityMismatch = errors.New("account bound to a different identity")
 
+// ErrMissingIdentity guards the binding: a blank sub would match every other
+// blank-sub row and hand over that account.
+var ErrMissingIdentity = errors.New("oidc login needs an email and a sub")
+
 // UpsertFromOIDC finds the account by sub first, so an email changed at the
 // provider follows the account. Otherwise it binds the account to the first sub
 // seen for the email. Super admin follows the config on every login.
 func (r *UserRepo) UpsertFromOIDC(
 	ctx context.Context, email, name, avatarURL, sub string, isSuperAdmin bool,
 ) (*model.User, error) {
-	email = strings.ToLower(email)
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" || strings.TrimSpace(sub) == "" {
+		return nil, ErrMissingIdentity
+	}
+	u, err := r.upsertFromOIDC(ctx, email, name, avatarURL, sub, isSuperAdmin)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.ConstraintName == "users_oidc_sub_key" {
+		// A concurrent first login inserted this sub between our UPDATE and
+		// INSERT; the retry's UPDATE now finds it.
+		return r.upsertFromOIDC(ctx, email, name, avatarURL, sub, isSuperAdmin)
+	}
+	return u, err
+}
+
+func (r *UserRepo) upsertFromOIDC(
+	ctx context.Context, email, name, avatarURL, sub string, isSuperAdmin bool,
+) (*model.User, error) {
 	var u model.User
 	row := r.db.Pool.QueryRow(ctx, `
 		UPDATE users
