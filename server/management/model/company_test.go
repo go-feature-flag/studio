@@ -14,8 +14,8 @@ func TestCompanyRole_IsValid(t *testing.T) {
 	}{
 		{"admin", CompanyRoleAdmin, true},
 		{"member", CompanyRoleMember, true},
-		{"editor removed", CompanyRole("editor"), false},
-		{"viewer removed", CompanyRole("viewer"), false},
+		{"editor is not a company role", CompanyRole("editor"), false},
+		{"viewer is not a company role", CompanyRole("viewer"), false},
 		{"empty", CompanyRole(""), false},
 	}
 	for _, tt := range tests {
