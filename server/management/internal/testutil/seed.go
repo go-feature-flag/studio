@@ -27,3 +27,21 @@ func SeedUser(t *testing.T, db *repository.DB, email, name string, superAdmin bo
 	}
 	return u
 }
+
+// SeedTeam inserts a team in the given company and returns it.
+func SeedTeam(t *testing.T, db *repository.DB, companyID, name string) *model.Team {
+	t.Helper()
+	team, err := repository.NewTeamRepo(db).Create(t.Context(), companyID, name, "")
+	if err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+	return team
+}
+
+// AddTeamMember adds (or upserts) a user as a team member with the given role.
+func AddTeamMember(t *testing.T, db *repository.DB, teamID, userID string, role model.Role) {
+	t.Helper()
+	if err := repository.NewTeamRepo(db).AddMember(t.Context(), teamID, userID, role); err != nil {
+		t.Fatalf("add team member: %v", err)
+	}
+}
