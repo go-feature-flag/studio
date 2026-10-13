@@ -7,6 +7,7 @@ import (
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -91,10 +92,26 @@ func TestCompanyRepoMembership(t *testing.T) {
 	stranger := testutil.SeedUser(t, db, "s@x.com", "S", false)
 	assert.ErrorIs(t, repo.UpdateMemberRole(ctx, company.ID, stranger.ID, model.CompanyRoleAdmin), repository.ErrNotFound)
 
-	// RemoveMember
+	// Team roles: one on the company's team, one on another company's team.
+	var acmeTeam, betaTeam string
+	require.NoError(t, db.Pool.QueryRow(ctx,
+		`INSERT INTO teams (company_id, name) VALUES ($1, 'acme-team') RETURNING id`, company.ID).Scan(&acmeTeam))
+	require.NoError(t, db.Pool.QueryRow(ctx,
+		`INSERT INTO teams (company_id, name) VALUES ($1, 'beta-team') RETURNING id`, other.ID).Scan(&betaTeam))
+	_, err = db.Pool.Exec(ctx,
+		`INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $3, 'admin'), ($2, $3, 'viewer')`,
+		acmeTeam, betaTeam, user.ID)
+	require.NoError(t, err)
+
+	// RemoveMember drops the company's team roles only.
 	require.NoError(t, repo.RemoveMember(ctx, company.ID, user.ID))
 	mem, err = repo.Membership(ctx, user.ID)
 	require.NoError(t, err)
 	assert.Nil(t, mem)
+	rows, err := db.Pool.Query(ctx, `SELECT team_id::text FROM team_members WHERE user_id = $1`, user.ID)
+	require.NoError(t, err)
+	teamIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	assert.Equal(t, []string{betaTeam}, teamIDs)
 	assert.True(t, errors.Is(repo.RemoveMember(ctx, company.ID, user.ID), repository.ErrNotFound))
 }
