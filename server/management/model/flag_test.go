@@ -220,6 +220,12 @@ func TestFlagSummaryFromPayload(t *testing.T) {
 		assert.Equal(t, &ProgressiveSummary{InitialVariation: "a", EndVariation: "b", From: 0, To: 100}, prog)
 	})
 
+	t.Run("progressive-rollout default with a missing step uses its default", func(t *testing.T) {
+		_, _, _, prog := FlagSummaryFromPayload(json.RawMessage(
+			`{"variations":{"a":"x","b":"y"},"defaultRule":{"progressiveRollout":{"initial":{"variation":"a","percentage":10}}}}`))
+		assert.Equal(t, &ProgressiveSummary{InitialVariation: "a", From: 10, To: 100}, prog)
+	})
+
 	t.Run("empty and invalid payloads yield zero values", func(t *testing.T) {
 		for _, p := range []string{``, `not-json`, `{}`} {
 			vars, dist, rules, prog := FlagSummaryFromPayload(json.RawMessage(p))
@@ -229,6 +235,20 @@ func TestFlagSummaryFromPayload(t *testing.T) {
 			assert.Nil(t, prog)
 		}
 	})
+}
+
+func TestParseFlagPayload(t *testing.T) {
+	dto, err := ParseFlagPayload(json.RawMessage(`{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"}}`))
+	assert.NoError(t, err)
+	assert.Len(t, *dto.Variations, 2)
+	assert.Equal(t, "on", *dto.DefaultRule.VariationResult)
+
+	_, err = ParseFlagPayload(json.RawMessage(`not json`))
+	assert.Error(t, err)
+}
+
+func TestUsesJSONLogicReduceUnparseable(t *testing.T) {
+	assert.False(t, usesJSONLogicReduce(`{"reduce":`))
 }
 
 func TestOpenFeatureFlagType(t *testing.T) {
@@ -339,6 +359,7 @@ func TestParseOrderedObject(t *testing.T) {
 		{"scalar", `42`},
 		{"malformed value", `{"a":}`},
 		{"truncated", `{"a":1`},
+		{"trailing comma", `{"a":1,}`},
 	}
 	for _, tc := range errCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -422,7 +443,10 @@ func TestNormalizeFlagTags(t *testing.T) {
 	assert.Contains(t, string(out), "owner")
 
 	// Absent tags / metadata / malformed payload are returned unchanged, no error.
-	for _, p := range []string{`{"metadata":{"owner":"me"}}`, `{"variations":{}}`, `not json`, ``} {
+	for _, p := range []string{
+		`{"metadata":{"owner":"me"}}`, `{"variations":{}}`, `not json`, ``,
+		`{"metadata":"x"}`, `{"metadata":{"tags":"x"}}`,
+	} {
 		out, err := NormalizeFlagTags(json.RawMessage(p))
 		assert.NoError(t, err)
 		assert.Equal(t, p, string(out))
@@ -442,7 +466,9 @@ func TestValidateFlagTags(t *testing.T) {
 		payload string
 		wantErr bool
 	}{
+		{"empty payload", ``, false},
 		{"no tags", `{"metadata":{"owner":"me"}}`, false},
+		{"non-string tag", `{"metadata":{"tags":[1]}}`, true},
 		{"valid", `{"metadata":{"tags":["beta","prod"]}}`, false},
 		// D4:A: a non-array legacy scalar `tags` is left untouched, not rejected,
 		// so a flag carrying it stays editable.

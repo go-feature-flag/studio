@@ -151,24 +151,19 @@ func InferFlagType(payload json.RawMessage) string {
 		return flagTypeUnknown
 	}
 	var p struct {
-		Variations map[string]json.RawMessage `json:"variations"`
+		Variations map[string]any `json:"variations"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil || len(p.Variations) == 0 {
 		return flagTypeUnknown
 	}
-	numeric, allInt := false, true
-	for _, raw := range p.Variations {
-		var v any
-		if err := json.Unmarshal(raw, &v); err != nil {
-			continue
-		}
+	allInt := true
+	for _, v := range p.Variations {
 		switch x := v.(type) {
 		case bool:
 			return flagTypeBoolean
 		case string:
 			return flagTypeString
 		case float64:
-			numeric = true
 			if x != math.Trunc(x) {
 				allInt = false
 			}
@@ -176,13 +171,11 @@ func InferFlagType(payload json.RawMessage) string {
 			return flagTypeJSON
 		}
 	}
-	if numeric {
-		if allInt {
-			return flagTypeInt
-		}
-		return flagTypeFloat
+	// Every non-number returned above, so all variations are numbers.
+	if allInt {
+		return flagTypeInt
 	}
-	return flagTypeUnknown
+	return flagTypeFloat
 }
 
 // FlagSummaryFromPayload extracts, for the team-wide flags list, the ordered
@@ -379,16 +372,9 @@ func SetFlagTypeMetadata(payload json.RawMessage) (json.RawMessage, error) {
 			meta = parsed
 		}
 	}
-	typeBytes, err := json.Marshal(ofType)
-	if err != nil {
-		return nil, err
-	}
+	typeBytes, _ := json.Marshal(ofType) // marshaling a string cannot fail
 	meta.set(FlagTypeMetadataKey, typeBytes)
-	metaBytes, err := json.Marshal(meta)
-	if err != nil {
-		return nil, err
-	}
-	root.set("metadata", metaBytes)
+	root.set("metadata", meta.encode())
 	return json.Marshal(root)
 }
 
@@ -432,10 +418,7 @@ func NormalizeFlagTags(payload json.RawMessage) (json.RawMessage, error) {
 	for _, k := range meta.keys {
 		if k == "tags" {
 			if len(norm) > 0 {
-				b, err := json.Marshal(norm)
-				if err != nil {
-					return nil, err
-				}
+				b, _ := json.Marshal(norm) // marshaling a []string cannot fail
 				newMeta.set("tags", b)
 			}
 			continue
@@ -443,11 +426,7 @@ func NormalizeFlagTags(payload json.RawMessage) (json.RawMessage, error) {
 		v, _ := meta.get(k)
 		newMeta.set(k, v)
 	}
-	metaBytes, err := json.Marshal(newMeta)
-	if err != nil {
-		return nil, err
-	}
-	root.set("metadata", metaBytes)
+	root.set("metadata", newMeta.encode())
 	return json.Marshal(root)
 }
 
@@ -527,10 +506,7 @@ func parseOrderedObject(data []byte) (*orderedObject, error) {
 		if err != nil {
 			return nil, err
 		}
-		key, ok := keyTok.(string)
-		if !ok {
-			return nil, fmt.Errorf("expected string object key")
-		}
+		key, _ := keyTok.(string) // the decoder only yields strings in key position
 		var raw json.RawMessage
 		if err := dec.Decode(&raw); err != nil {
 			return nil, err
@@ -556,22 +532,25 @@ func (o *orderedObject) set(key string, value json.RawMessage) {
 }
 
 func (o *orderedObject) MarshalJSON() ([]byte, error) {
+	return o.encode(), nil
+}
+
+// encode writes the object with its keys in insertion order. Values are spliced
+// in verbatim; json.Marshal on the enclosing document compacts and validates them.
+func (o *orderedObject) encode() json.RawMessage {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	for i, k := range o.keys {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		keyBytes, err := json.Marshal(k)
-		if err != nil {
-			return nil, err
-		}
+		keyBytes, _ := json.Marshal(k) // marshaling a string cannot fail
 		buf.Write(keyBytes)
 		buf.WriteByte(':')
 		buf.Write(o.values[k])
 	}
 	buf.WriteByte('}')
-	return buf.Bytes(), nil
+	return buf.Bytes()
 }
 
 func ValidateFlagName(name string) ValidationErrors {
