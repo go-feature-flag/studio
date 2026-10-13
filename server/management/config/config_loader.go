@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
@@ -57,8 +58,19 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 		}
 	}
 
+	// koanf's default hooks plus string->slice, so comma-separated env values
+	// (GOFF_MGMT_AUTH_ADMINEMAILS=a@x,b@x) become lists instead of one element.
 	var out Config
-	if err := k.Unmarshal("", &out); err != nil {
+	if err := k.UnmarshalWithConf("", &out, koanf.UnmarshalConf{
+		Tag: "koanf",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+				mapstructure.TextUnmarshallerHookFunc()),
+			WeaklyTypedInput: true,
+		},
+	}); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	return &out, nil
