@@ -27,6 +27,12 @@ func TestConfigValidate(t *testing.T) {
 		assert.NoError(t, c.Validate())
 	})
 
+	t.Run("max port passes", func(t *testing.T) {
+		c := validConfig()
+		c.Server.Port = 65535
+		assert.NoError(t, c.Validate())
+	})
+
 	tests := []struct {
 		name    string
 		mutate  func(c *Config)
@@ -34,6 +40,7 @@ func TestConfigValidate(t *testing.T) {
 	}{
 		{"port zero", func(c *Config) { c.Server.Port = 0 }, "server.port"},
 		{"port negative", func(c *Config) { c.Server.Port = -1 }, "server.port"},
+		{"port above max", func(c *Config) { c.Server.Port = 65536 }, "server.port"},
 		{"missing db url", func(c *Config) { c.DB.URL = "" }, "db.url"},
 		{"missing issuer", func(c *Config) { c.OIDC.Issuer = "" }, "oidc.issuer"},
 		{"missing client id", func(c *Config) { c.OIDC.ClientID = "" }, "oidc.clientId"},
