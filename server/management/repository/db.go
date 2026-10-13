@@ -13,11 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var (
-	ErrNotFound           = errors.New("not found")
-	ErrConflictOrNotFound = errors.New("conflict or not found")
-)
-
 type DB struct {
 	Pool *pgxpool.Pool
 }

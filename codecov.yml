@@ -22,3 +22,8 @@ comment:
   require_changes: false
   require_base: true
   require_head: true
+
+# Test-only helpers: exercised by other packages' tests, so per-package Go
+# coverage always reports them at 0%.
+ignore:
+  - "server/management/internal/testutil/**"

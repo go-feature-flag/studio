@@ -49,6 +49,11 @@ func TestUserRepoUpsertAndLookups(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, missing)
 
+	// A malformed id can't match a row: not found, not a server error.
+	malformed, err := repo.GetByID(ctx, "not-a-uuid")
+	require.NoError(t, err)
+	assert.Nil(t, malformed)
+
 	missingEmail, err := repo.GetByEmail(ctx, "nobody@example.com")
 	require.NoError(t, err)
 	assert.Nil(t, missingEmail)
