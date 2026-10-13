@@ -151,7 +151,6 @@ func withRules(vars map[string]*any, def *flag.Rule, queries ...string) coredto.
 	return coredto.DTO{Variations: &vars, DefaultRule: def, Rules: &rules}
 }
 
-
 func TestInferFlagType(t *testing.T) {
 	tests := []struct {
 		name    string

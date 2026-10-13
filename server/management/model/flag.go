@@ -132,19 +132,29 @@ type ProgressiveSummary struct {
 	To               float64 `json:"to"`
 }
 
+// Flag types returned by InferFlagType.
+const (
+	flagTypeUnknown = "unknown"
+	flagTypeBoolean = "boolean"
+	flagTypeString  = "string"
+	flagTypeInt     = "int"
+	flagTypeFloat   = "float"
+	flagTypeJSON    = "json"
+)
+
 // InferFlagType derives a flag's type from its version payload variations.
 // Type is not stored explicitly: it is the JSON type of the variation values.
 // Numbers are split into "int" and "float" (GOFF distinguishes the two): a
 // numeric flag is "int" only when every variation value is integral.
 func InferFlagType(payload json.RawMessage) string {
 	if len(payload) == 0 {
-		return "unknown"
+		return flagTypeUnknown
 	}
 	var p struct {
 		Variations map[string]json.RawMessage `json:"variations"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil || len(p.Variations) == 0 {
-		return "unknown"
+		return flagTypeUnknown
 	}
 	numeric, allInt := false, true
 	for _, raw := range p.Variations {
@@ -154,25 +164,25 @@ func InferFlagType(payload json.RawMessage) string {
 		}
 		switch x := v.(type) {
 		case bool:
-			return "boolean"
+			return flagTypeBoolean
 		case string:
-			return "string"
+			return flagTypeString
 		case float64:
 			numeric = true
 			if x != math.Trunc(x) {
 				allInt = false
 			}
 		default:
-			return "json"
+			return flagTypeJSON
 		}
 	}
 	if numeric {
 		if allInt {
-			return "int"
+			return flagTypeInt
 		}
-		return "float"
+		return flagTypeFloat
 	}
-	return "unknown"
+	return flagTypeUnknown
 }
 
 // FlagSummaryFromPayload extracts, for the team-wide flags list, the ordered
@@ -188,7 +198,9 @@ func InferFlagType(payload json.RawMessage) string {
 // static split, so distribution stays empty and its initial→end variations are
 // returned as progressive instead (the webui renders that as a rocket indicator).
 // A disabled or empty default yields neither.
-func FlagSummaryFromPayload(payload json.RawMessage) (variations []string, distribution map[string]float64, ruleCount int, progressive *ProgressiveSummary) {
+func FlagSummaryFromPayload(payload json.RawMessage) (
+	variations []string, distribution map[string]float64, ruleCount int, progressive *ProgressiveSummary,
+) {
 	if len(payload) == 0 {
 		return nil, nil, 0, nil
 	}
@@ -199,14 +211,8 @@ func FlagSummaryFromPayload(payload json.RawMessage) (variations []string, distr
 			Variation          *string            `json:"variation"`
 			Percentage         map[string]float64 `json:"percentage"`
 			ProgressiveRollout *struct {
-				Initial *struct {
-					Variation  *string  `json:"variation"`
-					Percentage *float64 `json:"percentage"`
-				} `json:"initial"`
-				End *struct {
-					Variation  *string  `json:"variation"`
-					Percentage *float64 `json:"percentage"`
-				} `json:"end"`
+				Initial *progressiveStep `json:"initial"`
+				End     *progressiveStep `json:"end"`
 			} `json:"progressiveRollout"`
 		} `json:"defaultRule"`
 	}
@@ -241,26 +247,34 @@ func FlagSummaryFromPayload(payload json.RawMessage) (variations []string, distr
 			// percentage anchors; default from=0/to=100 when a step omits its
 			// percentage (mirrors the webui ruleOutcome defaults).
 			s := &ProgressiveSummary{From: 0, To: 100}
-			if pr.Initial != nil {
-				if pr.Initial.Variation != nil {
-					s.InitialVariation = *pr.Initial.Variation
-				}
-				if pr.Initial.Percentage != nil {
-					s.From = *pr.Initial.Percentage
-				}
-			}
-			if pr.End != nil {
-				if pr.End.Variation != nil {
-					s.EndVariation = *pr.End.Variation
-				}
-				if pr.End.Percentage != nil {
-					s.To = *pr.End.Percentage
-				}
-			}
+			s.InitialVariation, s.From = pr.Initial.resolve(s.From)
+			s.EndVariation, s.To = pr.End.resolve(s.To)
 			progressive = s
 		}
 	}
 	return variations, distribution, ruleCount, progressive
+}
+
+// progressiveStep is one anchor (initial or end) of a progressive rollout.
+type progressiveStep struct {
+	Variation  *string  `json:"variation"`
+	Percentage *float64 `json:"percentage"`
+}
+
+// resolve returns the step's variation name and percentage, falling back to
+// defaultPct when the step or its percentage is absent.
+func (s *progressiveStep) resolve(defaultPct float64) (variation string, pct float64) {
+	pct = defaultPct
+	if s == nil {
+		return "", pct
+	}
+	if s.Variation != nil {
+		variation = *s.Variation
+	}
+	if s.Percentage != nil {
+		pct = *s.Percentage
+	}
+	return variation, pct
 }
 
 // FlagTagsFromPayload extracts the flag's tags from payload.metadata.tags. Only
@@ -317,15 +331,15 @@ func dedupeTags(raw []json.RawMessage) []string {
 // avoid writing an invalid value.
 func OpenFeatureFlagType(payload json.RawMessage) string {
 	switch InferFlagType(payload) {
-	case "boolean":
-		return "boolean"
-	case "string":
-		return "string"
-	case "int":
+	case flagTypeBoolean:
+		return flagTypeBoolean
+	case flagTypeString:
+		return flagTypeString
+	case flagTypeInt:
 		return "integer"
-	case "float":
-		return "float"
-	case "json":
+	case flagTypeFloat:
+		return flagTypeFloat
+	case flagTypeJSON:
 		return "object"
 	default:
 		return ""
@@ -392,7 +406,7 @@ func NormalizeFlagTags(payload json.RawMessage) (json.RawMessage, error) {
 	}
 	root, err := parseOrderedObject(payload)
 	if err != nil {
-		return payload, nil
+		return payload, nil //nolint:nilerr // malformed payload is left for validation
 	}
 	metaRaw, ok := root.get("metadata")
 	if !ok {
@@ -400,7 +414,7 @@ func NormalizeFlagTags(payload json.RawMessage) (json.RawMessage, error) {
 	}
 	meta, err := parseOrderedObject(metaRaw)
 	if err != nil {
-		return payload, nil
+		return payload, nil //nolint:nilerr // non-object metadata is left for validation
 	}
 	tagsRaw, ok := meta.get("tags")
 	if !ok {
@@ -408,7 +422,7 @@ func NormalizeFlagTags(payload json.RawMessage) (json.RawMessage, error) {
 	}
 	var arr []json.RawMessage
 	if err := json.Unmarshal(tagsRaw, &arr); err != nil {
-		return payload, nil // not an array — leave for validation
+		return payload, nil //nolint:nilerr // not an array — leave for validation
 	}
 	norm := dedupeTags(arr)
 
@@ -455,31 +469,32 @@ func ValidateFlagTags(payload json.RawMessage) ValidationErrors {
 		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil || p.Metadata == nil || p.Metadata.Tags == nil {
-		return nil
+		return nil //nolint:nilerr // malformed payload is rejected by ParseFlagPayload
 	}
 	var arr []json.RawMessage
 	if err := json.Unmarshal(*p.Metadata.Tags, &arr); err != nil {
-		return nil // non-array legacy scalar — leave it alone (D4:A)
+		return nil //nolint:nilerr // non-array legacy scalar — leave it alone (D4:A)
 	}
+	const field = "payload.metadata.tags"
 	var errs ValidationErrors
 	if len(arr) > 50 {
-		errs = append(errs, ValidationError{Field: "payload.metadata.tags", Message: "at most 50 tags per flag"})
+		errs = append(errs, ValidationError{Field: field, Message: "at most 50 tags per flag"})
 	}
 	for _, raw := range arr {
 		var s string
 		if err := json.Unmarshal(raw, &s); err != nil {
-			errs = append(errs, ValidationError{Field: "payload.metadata.tags", Message: "each tag must be a string"})
+			errs = append(errs, ValidationError{Field: field, Message: "each tag must be a string"})
 			continue
 		}
 		t := strings.TrimSpace(s)
 		if t == "" {
-			errs = append(errs, ValidationError{Field: "payload.metadata.tags", Message: "tags must not be empty"})
+			errs = append(errs, ValidationError{Field: field, Message: "tags must not be empty"})
 		}
 		if utf8.RuneCountInString(t) > 50 {
-			errs = append(errs, ValidationError{Field: "payload.metadata.tags", Message: "each tag must be at most 50 characters"})
+			errs = append(errs, ValidationError{Field: field, Message: "each tag must be at most 50 characters"})
 		}
 		if strings.ContainsRune(t, ',') {
-			errs = append(errs, ValidationError{Field: "payload.metadata.tags", Message: "tags must not contain commas"})
+			errs = append(errs, ValidationError{Field: field, Message: "tags must not contain commas"})
 		}
 	}
 	return errs
@@ -560,12 +575,13 @@ func (o *orderedObject) MarshalJSON() ([]byte, error) {
 }
 
 func ValidateFlagName(name string) ValidationErrors {
+	const field = "name"
 	var errs ValidationErrors
 	if name == "" {
-		errs = append(errs, ValidationError{Field: "name", Message: "flag name is required"})
+		errs = append(errs, ValidationError{Field: field, Message: "flag name is required"})
 	}
 	if len(name) > 200 {
-		errs = append(errs, ValidationError{Field: "name", Message: "flag name max 200 chars"})
+		errs = append(errs, ValidationError{Field: field, Message: "flag name max 200 chars"})
 	}
 	return errs
 }
@@ -577,20 +593,24 @@ func ValidateFlagPayload(p coredto.DTO) ValidationErrors {
 	}
 	if p.DefaultRule == nil {
 		errs = append(errs, ValidationError{Field: "payload.defaultRule", Message: "defaultRule is required"})
-	} else {
-		if p.DefaultRule.Percentages != nil {
-			var sum float64
-			for _, v := range *p.DefaultRule.Percentages {
-				sum += v
-			}
-			if sum > 0 && (sum < 99.999 || sum > 100.001) {
-				errs = append(errs, ValidationError{Field: "payload.defaultRule.percentage", Message: fmt.Sprintf("percentages must sum to 100, got %.2f", sum)})
-			}
+	} else if p.DefaultRule.Percentages != nil {
+		var sum float64
+		for _, v := range *p.DefaultRule.Percentages {
+			sum += v
+		}
+		if sum > 0 && (sum < 99.999 || sum > 100.001) {
+			errs = append(errs, ValidationError{
+				Field:   "payload.defaultRule.percentage",
+				Message: fmt.Sprintf("percentages must sum to 100, got %.2f", sum),
+			})
 		}
 	}
 	if p.Rules != nil {
 		if len(*p.Rules) > maxTargetingRules {
-			errs = append(errs, ValidationError{Field: "payload.targeting", Message: fmt.Sprintf("at most %d targeting rules", maxTargetingRules)})
+			errs = append(errs, ValidationError{
+				Field:   "payload.targeting",
+				Message: fmt.Sprintf("at most %d targeting rules", maxTargetingRules),
+			})
 		}
 		for i, r := range *p.Rules {
 			field := fmt.Sprintf("payload.targeting[%d].query", i)
@@ -649,7 +669,7 @@ func usesJSONLogicReduce(query string) bool {
 func ValidateFlagTypeUnchanged(current, next json.RawMessage) ValidationErrors {
 	cur := InferFlagType(current)
 	nxt := InferFlagType(next)
-	if cur != "unknown" && nxt != "unknown" && cur != nxt {
+	if cur != flagTypeUnknown && nxt != flagTypeUnknown && cur != nxt {
 		return ValidationErrors{{
 			Field:   "payload.variations",
 			Message: fmt.Sprintf("flag type is immutable: cannot change from %s to %s", cur, nxt),
