@@ -86,6 +86,33 @@ func TestEvaluateFlag(t *testing.T) {
 		assert.Equal(t, "int", res.FlagType)
 	})
 
+	t.Run("other flag types return their value unchanged", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			variations string
+			wantValue  any
+			wantType   string
+		}{
+			{"string", `{"a": "blue", "b": "red"}`, "red", "string"},
+			{"float is not truncated to int", `{"a": 1.5, "b": 2.5}`, 2.5, "float"},
+			{"object", `{"a": {"k": "v"}, "b": {"k": "w"}}`, map[string]any{"k": "w"}, "json"},
+			{"array", `{"a": [1, 2], "b": ["x", "y"]}`, []any{"x", "y"}, "json"},
+		}
+		req := &EvaluateFlagRequest{
+			EvaluationContext: EvaluationContextInput{TargetingKey: "user-8"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				payload := json.RawMessage(`{"variations": ` + tt.variations + `, "defaultRule": {"variation": "b"}}`)
+				res, err := EvaluateFlag("typed-flag", payload, nil, false, req)
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantValue, res.Value)
+				assert.Equal(t, tt.wantType, res.FlagType)
+				assert.False(t, res.Failed)
+			})
+		}
+	})
+
 	t.Run("empty targetingKey still evaluates the default rule", func(t *testing.T) {
 		req := &EvaluateFlagRequest{
 			EvaluationContext: EvaluationContextInput{TargetingKey: ""},
