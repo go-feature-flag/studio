@@ -103,7 +103,6 @@ CREATE TABLE flag_versions (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (flag_id, version_number)
 );
-CREATE INDEX idx_flag_versions_flag_desc ON flag_versions(flag_id, version_number DESC);
 
 ALTER TABLE flags
     ADD CONSTRAINT fk_flags_current_version
