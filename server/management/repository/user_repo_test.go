@@ -75,3 +75,27 @@ func TestUserRepoUpsertBindsSub(t *testing.T) {
 	assert.Equal(t, "sub-a", *got.OIDCSub)
 	assert.False(t, got.IsSuperAdmin)
 }
+
+func TestUserRepoUpsertFollowsEmailChange(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewUserRepo(db)
+	ctx := t.Context()
+
+	u, err := repo.UpsertFromOIDC(ctx, "old@example.com", "Bob", "", "sub-bob", false)
+	require.NoError(t, err)
+	_, err = repo.UpsertFromOIDC(ctx, "taken@example.com", "Carol", "", "sub-carol", false)
+	require.NoError(t, err)
+
+	// Same sub, new email at the provider: same account, email updated.
+	moved, err := repo.UpsertFromOIDC(ctx, "New@example.com", "Bob", "", "sub-bob", false)
+	require.NoError(t, err)
+	assert.Equal(t, u.ID, moved.ID)
+	assert.Equal(t, "new@example.com", moved.Email)
+
+	// Moving onto an email owned by another account is rejected and changes nothing.
+	_, err = repo.UpsertFromOIDC(ctx, "taken@example.com", "Bob", "", "sub-bob", false)
+	require.ErrorIs(t, err, repository.ErrIdentityMismatch)
+	got, err := repo.GetByID(ctx, u.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "new@example.com", got.Email)
+}

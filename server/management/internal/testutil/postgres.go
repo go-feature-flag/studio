@@ -6,6 +6,7 @@
 // Tests that call StartPostgres are skipped (not failed) when Docker is
 // unavailable or when -short is set, so the pure-unit suite stays runnable
 // everywhere. In CI (CI env var set) an unavailable Docker fails the test.
+// Setup errors once the container is up (migrations, pool) always fail.
 package testutil
 
 import (
@@ -47,6 +48,9 @@ type harness struct {
 	db        *repository.DB
 	terminate func()
 	err       error
+	// unavailable marks err as "container could not start" (e.g. no Docker),
+	// the only error worth skipping on.
+	unavailable bool
 }
 
 var (
@@ -72,8 +76,8 @@ func StartPostgres(t *testing.T) *repository.DB {
 	if shared.err != nil {
 		// CI (GitHub Actions sets CI=true) must run the integration suite, so a
 		// missing harness there is a failure, not a silent skip.
-		if os.Getenv("CI") != "" {
-			t.Fatalf("postgres test harness unavailable in CI: %v", shared.err)
+		if !shared.unavailable || os.Getenv("CI") != "" {
+			t.Fatalf("postgres test harness setup failed: %v", shared.err)
 		}
 		// A docker-less environment is an expected condition: skip rather than fail.
 		t.Skipf("postgres test harness unavailable (is Docker running?): %v", shared.err)
@@ -94,7 +98,7 @@ func bootstrap() harness {
 				WithStartupTimeout(90*time.Second)),
 	)
 	if err != nil {
-		return harness{err: err}
+		return harness{err: err, unavailable: true}
 	}
 	terminate := func() { _ = ctr.Terminate(context.Background()) }
 
