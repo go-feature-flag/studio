@@ -95,7 +95,7 @@ func (r *CompanyRepo) Delete(ctx context.Context, id string) error {
 
 func (r *CompanyRepo) ListMembers(ctx context.Context, companyID string) ([]model.CompanyMember, error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT u.id, u.company_id, u.id AS user_id, u.email, u.name, u.company_role AS role
+		SELECT u.id, u.company_id, u.id AS user_id, u.email, u.name, u.company_role AS role, u.created_at
 		FROM users u
 		WHERE u.company_id = $1 AND u.company_role IS NOT NULL
 		ORDER BY u.email`, companyID)
