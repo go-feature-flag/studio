@@ -163,6 +163,14 @@ func TestAuditRepoListRejectsMemberScopeWithoutCompany(t *testing.T) {
 	assert.ErrorIs(t, err, repository.ErrAuditMemberScope)
 }
 
+func TestAuditRepoListMalformedFilter(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	team := "not-a-uuid"
+	_, _, err := repository.NewAuditRepo(db).List(t.Context(), model.AuditScope{}, model.AuditFilters{TeamID: &team})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid input syntax for type uuid")
+}
+
 func TestAuditRepoListTiesPageByIDDesc(t *testing.T) {
 	db := testutil.StartPostgres(t)
 	fx := seedAuditFixture(t, db)

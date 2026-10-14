@@ -134,10 +134,9 @@ func (r *AuditRepo) List(
 			"SELECT COUNT(*) FROM audit_log a "+whereClause, countArgs...).Scan(&total); err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, listQ, listArgs...)
-		if err != nil {
-			return err
-		}
+		// CollectRows reports a failed Query through rows.Err.
+		rows, _ := tx.Query(ctx, listQ, listArgs...)
+		var err error
 		out, err = pgx.CollectRows(rows, pgx.RowToStructByName[model.AuditEntry])
 		return err
 	})
