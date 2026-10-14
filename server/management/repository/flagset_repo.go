@@ -8,7 +8,11 @@ import (
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrFlagsetNameTaken means another live flagset in the same team has the name.
+var ErrFlagsetNameTaken = errors.New("flagset name already used in this team")
 
 type FlagsetRepo struct{ db *DB }
 
@@ -30,6 +34,14 @@ func scanFlagset(row pgx.Row, fs *model.Flagset) error {
 	)
 }
 
+func mapFlagsetNameTaken(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.ConstraintName == "flagsets_team_name_live_unique" {
+		return ErrFlagsetNameTaken
+	}
+	return err
+}
+
 func (r *FlagsetRepo) Create(
 	ctx context.Context, teamID string, req *model.CreateFlagsetRequest,
 ) (*model.Flagset, error) {
@@ -48,7 +60,7 @@ func (r *FlagsetRepo) Create(
 		j[0], j[1], j[2], j[3], j[4],
 	), &fs)
 	if err != nil {
-		return nil, err
+		return nil, mapFlagsetNameTaken(err)
 	}
 	return &fs, nil
 }
@@ -106,9 +118,14 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, mapFlagsetNameTaken(err)
 	}
 	return &fs, nil
+}
+
+// flagsetJSONFields names the flagsetJSON arguments, in order, for errors.
+var flagsetJSONFields = []string{
+	"retrievers", "exporters", "notifiers", "evaluationContextEnrichment", "defaultTestingEvaluationContext",
 }
 
 // flagsetJSON encodes the flagset's JSON settings; empty or null ones become SQL
@@ -118,8 +135,9 @@ func flagsetJSON(raws ...json.RawMessage) ([]any, error) {
 	errs := make([]error, 0, len(raws))
 	for i, raw := range raws {
 		var err error
-		out[i], err = marshalAny(raw)
-		errs = append(errs, err)
+		if out[i], err = marshalAny(raw); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", flagsetJSONFields[i], err))
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, fmt.Errorf("invalid flagset JSON setting: %w", err)
@@ -144,7 +162,8 @@ func (r *FlagsetRepo) SoftDelete(ctx context.Context, id string) error {
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		// Same tag-mirror hygiene as FlagRepo.SoftDelete.
+		// flag_tags only mirrors live flags, so drop the rows of flags about to
+		// be deleted (before the UPDATE, while they still match deleted_at IS NULL).
 		if _, err := tx.Exec(ctx, `DELETE FROM flag_tags
 			WHERE flag_id IN (SELECT id FROM flags WHERE flagset_id = $1 AND deleted_at IS NULL)`, id); err != nil {
 			return err
@@ -193,19 +212,8 @@ func (r *FlagsetRepo) ListAPIKeys(ctx context.Context, flagsetID string) ([]mode
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.FlagsetAPIKey])
 }
 
-// GetAPIKeyFlagset returns the flagset id owning the given key (for authz/existence).
-func (r *FlagsetRepo) GetAPIKeyFlagset(ctx context.Context, keyID string) (string, error) {
-	var flagsetID string
-	err := r.db.Pool.QueryRow(ctx, `SELECT flagset_id FROM flagset_api_keys WHERE id = $1`, keyID).Scan(&flagsetID)
-	if err != nil {
-		if isNoRows(err) {
-			return "", ErrNotFound
-		}
-		return "", err
-	}
-	return flagsetID, nil
-}
-
-func (r *FlagsetRepo) DeleteAPIKeyByID(ctx context.Context, keyID string) error {
-	return r.db.execOne(ctx, `DELETE FROM flagset_api_keys WHERE id = $1`, keyID)
+// DeleteAPIKey revokes a key of the given flagset. Scoping by flagset means a
+// key id from another tenant's flagset is not found rather than deleted.
+func (r *FlagsetRepo) DeleteAPIKey(ctx context.Context, flagsetID, keyID string) error {
+	return r.db.execOne(ctx, `DELETE FROM flagset_api_keys WHERE id = $1 AND flagset_id = $2`, keyID, flagsetID)
 }
