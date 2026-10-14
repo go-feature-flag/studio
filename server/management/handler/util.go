@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"reflect"
-	"strings"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/service"
@@ -25,8 +25,12 @@ func created(c *echo.Context, data any) error {
 
 // bindError turns a c.Bind failure into a 400 that says what broke: the
 // offset of a JSON syntax error, or the field holding a value of the wrong
-// type. Anything else stays a bare "invalid body".
+// type. A body over the size limit is a 413. Anything else stays a bare "invalid body".
 func bindError(c *echo.Context, err error) error {
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		return c.JSON(http.StatusRequestEntityTooLarge, model.APIResponse{Message: "request body too large"})
+	}
 	var syn *json.SyntaxError
 	if errors.As(err, &syn) {
 		return badRequest(c, fmt.Sprintf("invalid JSON at offset %d", syn.Offset))
@@ -71,6 +75,9 @@ func internal(c *echo.Context, msg string) error {
 	return c.JSON(http.StatusInternalServerError, model.APIResponse{Message: msg})
 }
 
+// writeServiceError answers err. Messages come only from
+// service.PublicMessage or fixed text, never err.Error(), so wrapped
+// internals can't leak; opMsg must be a static description of the operation.
 func writeServiceError(c *echo.Context, err error, opMsg string) error {
 	var verrs model.ValidationErrors
 	if errors.As(err, &verrs) {
@@ -78,38 +85,47 @@ func writeServiceError(c *echo.Context, err error, opMsg string) error {
 			Message: "validation failed", Errors: verrs.ToMap(),
 		})
 	}
-	if errors.Is(err, service.ErrNotFound) {
-		return notFound(c, "not found")
-	}
-	if errors.Is(err, service.ErrForbidden) {
-		// "forbidden: <reason>" → "<reason>".
-		msg := strings.TrimPrefix(err.Error(), service.ErrForbidden.Error()+": ")
-		return c.JSON(http.StatusForbidden, model.APIResponse{Message: msg})
-	}
-	if errors.Is(err, service.ErrConflict) {
-		// "conflict: name already in use" → "name already in use".
-		msg := strings.TrimPrefix(err.Error(), service.ErrConflict.Error()+": ")
-		return c.JSON(http.StatusConflict, model.APIResponse{Message: msg})
+	for _, m := range []struct {
+		kind   error
+		status int
+		msg    string
+	}{
+		{service.ErrNotFound, http.StatusNotFound, "not found"},
+		{service.ErrForbidden, http.StatusForbidden, "forbidden"},
+		{service.ErrConflict, http.StatusConflict, "conflict"},
+	} {
+		if errors.Is(err, m.kind) {
+			msg := service.PublicMessage(err)
+			if msg == "" {
+				msg = m.msg
+			}
+			return c.JSON(m.status, model.APIResponse{Message: msg})
+		}
 	}
 	// Client-caused PG errors are not server errors. Don't echo the PG message:
 	// it leaks constraint names.
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
-		case "23505": // unique_violation: duplicate team/flagset/flag name, ...
+		case "23505": // unique_violation
 			return c.JSON(http.StatusConflict, model.APIResponse{Message: "already exists"})
-		case "22P02": // invalid_text_representation: malformed uuid
-			return badRequest(c, "invalid id")
-		case "23503": // foreign_key_violation: the referenced row doesn't exist
-			return notFound(c, "not found")
+		case "23503": // foreign_key_violation: a referenced row is missing, or still referenced
+			return c.JSON(http.StatusConflict, model.APIResponse{Message: "conflicts with a related resource"})
+		case "22P02", "23502", "23514", "22001": // bad cast, not null, check, too long
+			return badRequest(c, "invalid value")
 		}
 	}
-	// A client that went away isn't a server failure worth an error log.
-	if !errors.Is(err, context.Canceled) {
-		c.Logger().Error(opMsg, "error", err)
+	// A client that went away: nobody reads the answer, and it isn't a server
+	// failure (nginx's 499 convention keeps it out of 5xx metrics).
+	if errors.Is(err, context.Canceled) {
+		return c.NoContent(statusClientClosedRequest)
 	}
+	slog.ErrorContext(c.Request().Context(), opMsg, "error", err,
+		"method", c.Request().Method, "path", c.Request().URL.Path)
 	if errors.Is(err, context.DeadlineExceeded) {
 		return c.JSON(http.StatusServiceUnavailable, model.APIResponse{Message: "service unavailable"})
 	}
 	return internal(c, opMsg)
 }
+
+const statusClientClosedRequest = 499

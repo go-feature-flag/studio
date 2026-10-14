@@ -94,15 +94,24 @@ func TestWriteServiceError(t *testing.T) {
 		wantCode int
 		wantMsg  string // checked when set
 	}{
-		{"not found", service.ErrNotFound, http.StatusNotFound, ""},
-		{"forbidden", service.ErrForbidden, http.StatusForbidden, ""},
+		{"not found", service.ErrNotFound, http.StatusNotFound, "not found"},
+		{"forbidden", service.ErrForbidden, http.StatusForbidden, "forbidden"},
 		{"conflict", service.ErrConflict, http.StatusConflict, "conflict"},
-		{"wrapped conflict drops the sentinel prefix", fmt.Errorf("%w: name already in use", service.ErrConflict), http.StatusConflict, "name already in use"},
-		{"wrapped not found", fmt.Errorf("load: %w", service.ErrNotFound), http.StatusNotFound, ""},
-		{"unique violation is 409", fmt.Errorf("insert: %w", &pgconn.PgError{Code: "23505"}), http.StatusConflict, "already exists"},
-		{"malformed uuid is 400", fmt.Errorf("load: %w", &pgconn.PgError{Code: "22P02"}), http.StatusBadRequest, "invalid id"},
-		{"foreign key violation is 404", fmt.Errorf("insert: %w", &pgconn.PgError{Code: "23503"}), http.StatusNotFound, "not found"},
-		{"deadline exceeded is 503", fmt.Errorf("query: %w", context.DeadlineExceeded), http.StatusServiceUnavailable, "service unavailable"},
+		{"public message is shown", service.ErrMonoCompanyExists, http.StatusConflict,
+			"a company already exists (mono company mode)"},
+		{"wrapped text is never shown", fmt.Errorf("load user bob@x.com: %w", service.ErrForbidden),
+			http.StatusForbidden, "forbidden"},
+		{"wrapped PG error is never shown", fmt.Errorf("%w: %w", service.ErrConflict,
+			&pgconn.PgError{Code: "23505", Message: "secret", ConstraintName: "users_pkey"}), http.StatusConflict, "conflict"},
+		{"wrapped not found", fmt.Errorf("load: %w", service.ErrNotFound), http.StatusNotFound, "not found"},
+		{"unique violation is 409", fmt.Errorf("insert: %w", &pgconn.PgError{Code: "23505", Message: "secret"}),
+			http.StatusConflict, "already exists"},
+		{"bad cast is 400", fmt.Errorf("load: %w", &pgconn.PgError{Code: "22P02"}), http.StatusBadRequest, "invalid value"},
+		{"check violation is 400", &pgconn.PgError{Code: "23514"}, http.StatusBadRequest, "invalid value"},
+		{"foreign key violation is 409", fmt.Errorf("delete: %w", &pgconn.PgError{Code: "23503"}),
+			http.StatusConflict, "conflicts with a related resource"},
+		{"deadline exceeded is 503", fmt.Errorf("query: %w", context.DeadlineExceeded),
+			http.StatusServiceUnavailable, "service unavailable"},
 		{"unknown error is 500", errors.New("db exploded"), http.StatusInternalServerError, "op failed"},
 	}
 	for _, tt := range tests {
@@ -110,13 +119,16 @@ func TestWriteServiceError(t *testing.T) {
 			c, rec := newCtx()
 			require.NoError(t, writeServiceError(c, tt.err, "op failed"))
 			assert.Equal(t, tt.wantCode, rec.Code)
-			msg := decodeResp(t, rec).Message
-			assert.NotEmpty(t, msg)
-			if tt.wantMsg != "" {
-				assert.Equal(t, tt.wantMsg, msg)
-			}
+			assert.Equal(t, tt.wantMsg, decodeResp(t, rec).Message)
+			assert.NotContains(t, rec.Body.String(), "secret")
 		})
 	}
+}
+
+func TestWriteServiceErrorClientGone(t *testing.T) {
+	c, rec := newCtx()
+	require.NoError(t, writeServiceError(c, fmt.Errorf("query: %w", context.Canceled), "op failed"))
+	assert.Equal(t, statusClientClosedRequest, rec.Code)
 }
 
 func TestBindError(t *testing.T) {
@@ -151,6 +163,39 @@ func TestBindError(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("body over the size limit is 413", func(t *testing.T) {
+		c, rec := reqCtx(http.MethodPost, `{"name":"a long enough name"}`)
+		c.Request().Body = http.MaxBytesReader(rec, c.Request().Body, 4)
+		var r req
+		err := c.Bind(&r)
+		require.Error(t, err)
+		require.NoError(t, bindError(c, err))
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	})
+}
+
+// FuzzBindError: any body that fails to bind becomes a JSON 4xx, never a
+// panic or a 5xx.
+func FuzzBindError(f *testing.F) {
+	for _, seed := range []string{`{"name":`, `{bad`, `{"name":1}`, `{"meta":{"tags":"x"}}`, `[]`, `"x"`} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, body string) {
+		c, rec := reqCtx(http.MethodPost, body)
+		var r struct {
+			Name string `json:"name"`
+			Meta struct {
+				Tags []string `json:"tags"`
+			} `json:"meta"`
+		}
+		if err := c.Bind(&r); err != nil {
+			require.NoError(t, bindError(c, err))
+			assert.GreaterOrEqual(t, rec.Code, 400)
+			assert.Less(t, rec.Code, 500)
+			assert.True(t, json.Valid(rec.Body.Bytes()))
+		}
+	})
 }
 
 func TestJSONKind(t *testing.T) {

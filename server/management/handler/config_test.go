@@ -10,15 +10,22 @@ import (
 )
 
 func TestConfigHandler(t *testing.T) {
-	for _, tc := range []struct {
+	tests := []struct {
+		name  string
 		multi bool
 		mono  bool
-	}{{multi: false, mono: true}, {multi: true, mono: false}} {
-		cfg := config.Default()
-		cfg.Server.MultiCompany = tc.multi
-		c, rec := reqCtx(http.MethodGet, "")
-		require.NoError(t, NewConfigHandler(cfg).Get(c))
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, tc.mono, dataMap(t, decodeResp(t, rec).Data)["monoCompany"])
+	}{
+		{"mono company by default", false, true},
+		{"multi company", true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Server.MultiCompany = tt.multi
+			c, rec := reqCtx(http.MethodGet, "")
+			require.NoError(t, NewConfigHandler(cfg).Get(c))
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tt.mono, dataMap(t, decodeResp(t, rec).Data)["monoCompany"])
+		})
 	}
 }
