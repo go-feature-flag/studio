@@ -3,11 +3,22 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+)
+
+var (
+	// ErrAuditNoCompany means the entry has no CompanyID and its TeamID doesn't
+	// resolve to a team (e.g. the team was deleted first). Audit scoping relies
+	// on company_id, so such an entry would be invisible to company admins.
+	ErrAuditNoCompany = errors.New("audit entry has no company: set CompanyID or an existing TeamID")
+	// ErrAuditMemberScope guards against a member scope that would otherwise
+	// return company-level events of every company.
+	ErrAuditMemberScope = errors.New("audit scope: MemberUserID requires CompanyID")
 )
 
 type AuditRepo struct{ db *DB }
@@ -28,27 +39,11 @@ type AuditInput struct {
 	Metadata    any
 }
 
+// Record writes an audit entry, inside tx when it is not nil. CompanyID may be
+// omitted when TeamID names a team that still exists; otherwise Record returns
+// ErrAuditNoCompany, so callers deleting a team must pass CompanyID.
 func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error {
-	before := marshalAny(in.Before)
-	after := marshalAny(in.After)
-	meta := marshalAny(in.Metadata)
-
-	// company_id falls back to the team's company so flag/flagset events (which
-	// only pass TeamID) stay tenant-scoped after the team is deleted.
-	q := `INSERT INTO audit_log (actor_user_id, company_id, team_id, flagset_id, flag_id,
-	                            action, target_type, target_id, before, after, metadata)
-	      VALUES ($1, COALESCE($2::uuid, (SELECT company_id FROM teams WHERE id = $3::uuid)),
-	              $3, $4, $5, $6, $7, $8, $9, $10, $11)`
-	args := []any{
-		in.ActorUserID, in.CompanyID, in.TeamID, in.FlagsetID, in.FlagID,
-		in.Action, in.TargetType, in.TargetID, before, after, meta,
-	}
-	var err error
-	if tx != nil {
-		_, err = tx.Exec(ctx, q, args...)
-	} else {
-		_, err = r.db.Pool.Exec(ctx, q, args...)
-	}
+	err := r.record(ctx, tx, in)
 	// Most callers treat audit as best-effort and drop the error, so log it here
 	// to keep a broken audit pipeline visible.
 	if err != nil {
@@ -58,38 +53,111 @@ func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error 
 	return err
 }
 
-func marshalAny(v any) any {
-	if v == nil {
-		return nil
+func (r *AuditRepo) record(ctx context.Context, tx pgx.Tx, in AuditInput) error {
+	before, errBefore := marshalAny(in.Before)
+	after, errAfter := marshalAny(in.After)
+	meta, errMeta := marshalAny(in.Metadata)
+	if err := errors.Join(errBefore, errAfter, errMeta); err != nil {
+		return fmt.Errorf("marshal audit payload: %w", err)
 	}
-	if raw, ok := v.(json.RawMessage); ok {
-		if len(raw) == 0 {
-			return nil
-		}
-		return []byte(raw)
+
+	// actor_email is a snapshot so the entry keeps its actor after the user is
+	// deleted. The WHERE turns an unresolvable company into zero rows.
+	q := `INSERT INTO audit_log (actor_user_id, actor_email, company_id, team_id, flagset_id, flag_id,
+	                            action, target_type, target_id, before, after, metadata)
+	      SELECT $1::uuid, (SELECT email FROM users WHERE id = $1::uuid), c.id,
+	             $3::uuid, $4::uuid, $5::uuid, $6::text, $7::text, $8::text, $9::jsonb, $10::jsonb, $11::jsonb
+	      FROM (SELECT COALESCE($2::uuid, (SELECT company_id FROM teams WHERE id = $3::uuid)) AS id) c
+	      WHERE c.id IS NOT NULL`
+	args := []any{
+		in.ActorUserID, in.CompanyID, in.TeamID, in.FlagsetID, in.FlagID,
+		in.Action, in.TargetType, in.TargetID, before, after, meta,
 	}
-	b, err := json.Marshal(v)
+	exec := r.db.Pool.Exec
+	if tx != nil {
+		exec = tx.Exec
+	}
+	ct, err := exec(ctx, q, args...)
 	if err != nil {
-		return nil
+		return err
 	}
-	return b
+	if ct.RowsAffected() == 0 {
+		return ErrAuditNoCompany
+	}
+	return nil
 }
 
+// marshalAny encodes an audit payload. nil, a typed nil pointer and an empty
+// RawMessage all become SQL NULL, so the API omits them instead of sending null.
+func marshalAny(v any) (any, error) {
+	if raw, ok := v.(json.RawMessage); ok && len(raw) == 0 {
+		return nil, nil
+	}
+	b, err := json.Marshal(v)
+	if err != nil || string(b) == "null" {
+		return nil, err
+	}
+	return b, nil
+}
+
+// List returns one page of entries, newest first, and the total matching count.
+// Both are read in one repeatable-read snapshot so they agree with each other.
 func (r *AuditRepo) List(
 	ctx context.Context, scope model.AuditScope, f model.AuditFilters,
 ) ([]model.AuditEntry, int, error) {
+	if scope.MemberUserID != nil && scope.CompanyID == nil {
+		return nil, 0, ErrAuditMemberScope
+	}
+	qb := auditConditions(scope, f)
+	where, countArgs := qb.Build()
+	whereClause := "WHERE 1=1" + where
+
+	f.Page, f.PageSize = model.ClampPage(f.Page, f.PageSize)
+	limit, offset := qb.Arg(f.PageSize), qb.Arg((f.Page-1)*f.PageSize)
+	_, listArgs := qb.Build()
+	listQ := fmt.Sprintf(`
+		SELECT a.id, a.occurred_at, a.actor_user_id, a.actor_email,
+		       a.company_id, a.team_id, a.flagset_id, a.flag_id, a.action, a.target_type, a.target_id,
+		       a.before, a.after, a.metadata
+		FROM audit_log a
+		%s
+		ORDER BY a.occurred_at DESC, a.id DESC
+		LIMIT %s OFFSET %s`, whereClause, limit, offset)
+
+	var (
+		out   []model.AuditEntry
+		total int
+	)
+	txOpts := pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}
+	err := pgx.BeginTxFunc(ctx, r.db.Pool, txOpts, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx,
+			"SELECT COUNT(*) FROM audit_log a "+whereClause, countArgs...).Scan(&total); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, listQ, listArgs...)
+		if err != nil {
+			return err
+		}
+		out, err = pgx.CollectRows(rows, pgx.RowToStructByName[model.AuditEntry])
+		return err
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
+func auditConditions(scope model.AuditScope, f model.AuditFilters) *QueryBuilder {
 	qb := NewQueryBuilder(0)
+	// Record guarantees company_id on every entry, so tenant isolation is a
+	// plain indexed match.
 	if scope.CompanyID != nil {
-		// Tenant isolation: an entry belongs to a company when its company_id
-		// matches, or when it targets a team owned by that company (flag/flagset
-		// events only carry team_id, not company_id). The single bound argument
-		// is referenced twice via an explicit index.
-		qb.Add("(a.company_id = $%[1]d OR a.team_id IN (SELECT id FROM teams WHERE company_id = $%[1]d))", *scope.CompanyID)
+		qb.Add("a.company_id = $%d", *scope.CompanyID)
 	}
 	if scope.MemberUserID != nil {
-		// Team events only for the user's teams; company-level events carry no
-		// team_id. Matching a bare team_id IS NULL would also expose deleted
-		// teams' history, so restrict it to company-level targets.
+		// Team-less entries are only shown when they target the company itself:
+		// a team, flagset or flag event recorded without TeamID would otherwise
+		// be visible to every member.
 		qb.Add("a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $%d)"+
 			" OR (a.team_id IS NULL AND a.target_type IN ('company', 'company_member'))", *scope.MemberUserID)
 	}
@@ -117,32 +185,5 @@ func (r *AuditRepo) List(
 	if f.To != nil {
 		qb.Add("a.occurred_at <= $%d", *f.To)
 	}
-	where, countArgs := qb.Build()
-	whereClause := "WHERE 1=1" + where
-
-	var total int
-	if err := r.db.Pool.QueryRow(ctx,
-		"SELECT COUNT(*) FROM audit_log a "+whereClause, countArgs...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-
-	f.Page, f.PageSize = model.ClampPage(f.Page, f.PageSize)
-	limit, offset := qb.Arg(f.PageSize), qb.Arg((f.Page-1)*f.PageSize)
-	_, args := qb.Build()
-	listQ := fmt.Sprintf(`
-		SELECT a.id, a.occurred_at, a.actor_user_id, u.email AS actor_email,
-		       a.company_id, a.team_id, a.flagset_id, a.flag_id, a.action, a.target_type, a.target_id,
-		       a.before, a.after, a.metadata
-		FROM audit_log a
-		LEFT JOIN users u ON u.id = a.actor_user_id
-		%s
-		ORDER BY a.occurred_at DESC, a.id DESC
-		LIMIT %s OFFSET %s`, whereClause, limit, offset)
-
-	rows, err := r.db.Pool.Query(ctx, listQ, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	out, err := pgx.CollectRows(rows, pgx.RowToStructByName[model.AuditEntry])
-	return out, total, err
+	return qb
 }
