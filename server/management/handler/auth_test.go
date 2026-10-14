@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -218,6 +219,17 @@ func TestAuthHandlerMe(t *testing.T) {
 		assert.Equal(t, "u@acme.com", userData["email"])
 		assert.Equal(t, false, userData["isSuperAdmin"], "from the session, not the stored flag")
 		assert.Equal(t, co.ID, dataMap(t, data["company"])["companyId"])
+	})
+
+	t.Run("lookup failure -> 500", func(t *testing.T) {
+		c, rec := reqCtx(http.MethodGet, "")
+		ctx, cancel := context.WithCancel(c.Request().Context())
+		cancel()
+		c.SetRequest(c.Request().WithContext(ctx))
+		withClaims(c, user.ID, false)
+		require.NoError(t, h.Me(c))
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "failed to load user", decodeResp(t, rec).Message)
 	})
 
 	t.Run("unknown user -> 404", func(t *testing.T) {

@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -55,15 +54,11 @@ func (s *AuthService) AuthURL(state, verifier, nonce string) string {
 	return s.oauth.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oidc.Nonce(nonce))
 }
 
-// RandomState returns a random OAuth state value (24 bytes, base64url). It is
-// too short for a PKCE verifier (RFC 7636 wants 43-128 chars): use
-// oauth2.GenerateVerifier for that.
-func (s *AuthService) RandomState() (string, error) {
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+// RandomState returns a random OAuth state or nonce value (crypto/rand.Text:
+// 26 base32 chars, 130 bits; it can't fail and contains no "."). Use
+// oauth2.GenerateVerifier for the PKCE verifier (RFC 7636 wants 43-128 chars).
+func (s *AuthService) RandomState() string {
+	return rand.Text()
 }
 
 type Claims struct {

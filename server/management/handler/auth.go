@@ -36,18 +36,8 @@ func NewAuthHandler(
 // A root route (GET /auth/login), not under /api/v1, so it is left out of the
 // Swagger spec; see docs/reference/api.md.
 func (h *AuthHandler) Login(c *echo.Context) error {
-	state, err := h.auth.RandomState()
-	if err != nil {
-		slog.ErrorContext(c.Request().Context(), "failed to generate state", "error", err)
-		return internal(c, "failed to generate state")
-	}
-	nonce, err := h.auth.RandomState()
-	if err != nil {
-		slog.ErrorContext(c.Request().Context(), "failed to generate nonce", "error", err)
-		return internal(c, "failed to generate state")
-	}
-	verifier := oauth2.GenerateVerifier()
-	// The cookie carries all three (base64url, so "." is a safe separator); only
+	state, nonce, verifier := h.auth.RandomState(), h.auth.RandomState(), oauth2.GenerateVerifier()
+	// The cookie carries all three (none contains a "."); only
 	// state and the PKCE challenge travel through the provider redirect.
 	ck := h.cookie(stateCookie, state+"."+verifier+"."+nonce) //nolint:gosec // Secure: see cookie()
 	ck.Domain, ck.Expires = "", time.Now().Add(10*time.Minute)

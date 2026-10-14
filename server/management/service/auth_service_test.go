@@ -341,11 +341,9 @@ func TestNewAuthService(t *testing.T) {
 
 func TestRandomState(t *testing.T) {
 	s := &AuthService{}
-	a, err := s.RandomState()
-	require.NoError(t, err)
-	b, err := s.RandomState()
-	require.NoError(t, err)
-	assert.Len(t, a, 32, "24 random bytes, base64url")
+	a, b := s.RandomState(), s.RandomState()
+	assert.Len(t, a, 26, "130 random bits, base32")
+	assert.NotContains(t, a, ".", "safe inside the state.verifier.nonce cookie")
 	assert.NotEqual(t, a, b)
 }
 
