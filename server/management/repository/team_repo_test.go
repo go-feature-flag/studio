@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
@@ -38,6 +39,16 @@ func TestTeamRepoCRUD(t *testing.T) {
 	_, err = repo.Update(ctx, "00000000-0000-0000-0000-000000000000", new("x"), nil)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
 
+	// Names are unique per company, on create and on rename.
+	other, err := repo.Create(ctx, company.ID, "Data", "")
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, company.ID, "Data", "")
+	assert.ErrorIs(t, err, repository.ErrTeamNameTaken)
+	_, err = repo.Update(ctx, other.ID, new("Platform Eng"), nil)
+	assert.ErrorIs(t, err, repository.ErrTeamNameTaken)
+	_, err = repo.Create(ctx, testutil.SeedCompany(t, db, "Globex").ID, "Data", "")
+	assert.NoError(t, err, "same name in another company is fine")
+
 	require.NoError(t, repo.Delete(ctx, created.ID))
 	assert.ErrorIs(t, repo.Delete(ctx, created.ID), repository.ErrNotFound)
 }
@@ -48,40 +59,33 @@ func TestTeamRepoListVisibility(t *testing.T) {
 	ctx := t.Context()
 
 	company := testutil.SeedCompany(t, db, "Acme")
-	teamA := testutil.SeedTeam(t, db, company.ID, "A-Team")
-	teamB := testutil.SeedTeam(t, db, company.ID, "B-Team")
+	testutil.SeedTeam(t, db, company.ID, "A-Team")
+	testutil.SeedTeam(t, db, company.ID, "B-Team")
+	globex := testutil.SeedCompany(t, db, "Globex")
+	testutil.SeedTeam(t, db, globex.ID, "C-Team")
 
 	// A super admin sees every team.
 	admin := testutil.SeedUser(t, db, "admin@acme.com", "Admin", true)
 	all, err := repo.List(ctx, admin.ID, true)
 	require.NoError(t, err)
-	assert.Len(t, all, 2)
+	assert.Len(t, all, 3)
 	assert.Equal(t, "A-Team", all[0].Name, "ordered by name")
 
-	// An explicit membership in teamA without belonging to the company shows nothing.
+	// A user outside any company sees nothing.
 	member := testutil.SeedUser(t, db, "member@acme.com", "Member", false)
-	testutil.AddTeamMember(t, db, teamA.ID, member.ID, model.RoleEditor)
 	visible, err := repo.List(ctx, member.ID, false)
 	require.NoError(t, err)
 	assert.Empty(t, visible)
-	ms, err := repo.Memberships(ctx, member.ID)
-	require.NoError(t, err)
-	assert.Empty(t, ms)
 
-	// A company member sees every team of the company.
+	// A company member sees only their company's teams.
 	require.NoError(t, repository.NewCompanyRepo(db).SetMember(ctx, company.ID, member.ID, model.CompanyRoleMember))
 	visible, err = repo.List(ctx, member.ID, false)
 	require.NoError(t, err)
 	assert.Len(t, visible, 2)
-	ms, err = repo.Memberships(ctx, member.ID)
-	require.NoError(t, err)
-	assert.Len(t, ms, 1)
 
-	// ListByCompany returns both teams.
 	byCompany, err := repo.ListByCompany(ctx, company.ID)
 	require.NoError(t, err)
 	assert.Len(t, byCompany, 2)
-	_ = teamB
 }
 
 func TestTeamRepoMembers(t *testing.T) {
@@ -127,6 +131,46 @@ func TestTeamRepoMembers(t *testing.T) {
 	stranger := testutil.SeedUser(t, db, "s@acme.com", "S", false)
 	assert.ErrorIs(t, repo.UpdateMemberRole(ctx, team.ID, stranger.ID, model.RoleAdmin), repository.ErrNotFound)
 
+	// Only users of the team's company can join it.
+	assert.ErrorIs(t, repo.AddMember(ctx, team.ID, stranger.ID, model.RoleEditor), repository.ErrConflictOrNotFound)
+	missingTeam := "00000000-0000-0000-0000-000000000000"
+	assert.ErrorIs(t, repo.AddMember(ctx, missingTeam, user.ID, model.RoleEditor), repository.ErrConflictOrNotFound)
+
+	// A membership row outside the user's company grants no role and isn't listed.
+	_, err = db.Pool.Exec(ctx,
+		`INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'admin')`, team.ID, stranger.ID)
+	require.NoError(t, err)
+	role, err = repo.GetRole(ctx, team.ID, stranger.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.Role(""), role)
+	memberships, err = repo.Memberships(ctx, stranger.ID)
+	require.NoError(t, err)
+	assert.Empty(t, memberships)
+
 	require.NoError(t, repo.RemoveMember(ctx, team.ID, user.ID))
 	assert.ErrorIs(t, repo.RemoveMember(ctx, team.ID, user.ID), repository.ErrNotFound)
+}
+
+func TestTeamRepoQueryErrors(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewTeamRepo(db)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	id := "00000000-0000-0000-0000-000000000000"
+
+	_, err := repo.Create(ctx, id, "x", "")
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.GetByID(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.List(ctx, id, false)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.Update(ctx, id, nil, nil)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.GetRole(ctx, id, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.ListMembers(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, repo.AddMember(ctx, id, id, model.RoleViewer), context.Canceled)
+	_, err = repo.Memberships(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
 }

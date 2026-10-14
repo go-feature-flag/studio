@@ -2,10 +2,15 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrTeamNameTaken means another team in the same company already has the name.
+var ErrTeamNameTaken = errors.New("team name already used in this company")
 
 type TeamRepo struct{ db *DB }
 
@@ -17,6 +22,14 @@ func scanTeam(row pgx.Row, t *model.Team) error {
 	return row.Scan(&t.ID, &t.CompanyID, &t.Name, &t.Description, &t.CreatedAt, &t.UpdatedAt)
 }
 
+func mapTeamNameTaken(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.ConstraintName == "teams_company_name_unique" {
+		return ErrTeamNameTaken
+	}
+	return err
+}
+
 func (r *TeamRepo) Create(ctx context.Context, companyID, name, description string) (*model.Team, error) {
 	var t model.Team
 	err := scanTeam(r.db.Pool.QueryRow(ctx,
@@ -25,7 +38,7 @@ func (r *TeamRepo) Create(ctx context.Context, companyID, name, description stri
 		companyID, name, description,
 	), &t)
 	if err != nil {
-		return nil, err
+		return nil, mapTeamNameTaken(err)
 	}
 	return &t, nil
 }
@@ -44,21 +57,16 @@ func (r *TeamRepo) GetByID(ctx context.Context, id string) (*model.Team, error) 
 	return &t, nil
 }
 
-// List returns teams visible to the user. SuperAdmin sees all. Otherwise, returns
-// the teams in the user's company. An explicit team membership alone shows
-// nothing: those teams are always in the user's company, unless the membership
-// is left over from a company the user no longer belongs to.
+// List returns teams visible to the user: all of them for a super admin,
+// otherwise the teams of the user's company.
 func (r *TeamRepo) List(ctx context.Context, userID string, superAdmin bool) ([]model.Team, error) {
 	if superAdmin {
 		return r.queryTeams(ctx,
 			`SELECT `+teamCols+` FROM teams ORDER BY name`)
 	}
-	return r.queryTeams(ctx, `
-		SELECT t.id, t.company_id, t.name, t.description, t.created_at, t.updated_at
-		FROM teams t
-		JOIN users u ON u.company_id = t.company_id
-		WHERE u.id = $1
-		ORDER BY t.name`, userID)
+	return r.queryTeams(ctx, `SELECT `+teamCols+` FROM teams
+		WHERE company_id = (SELECT company_id FROM users WHERE id = $1)
+		ORDER BY name`, userID)
 }
 
 // ListByCompany returns all teams in the given company.
@@ -89,7 +97,7 @@ func (r *TeamRepo) Update(ctx context.Context, id string, name, description *str
 		if isNoRows(err) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, mapTeamNameTaken(err)
 	}
 	return &t, nil
 }
@@ -98,10 +106,15 @@ func (r *TeamRepo) Delete(ctx context.Context, id string) error {
 	return r.db.execOne(ctx, `DELETE FROM teams WHERE id = $1`, id)
 }
 
+// GetRole returns the user's role in the team, or "" if none. A membership only
+// counts while the user belongs to the team's company.
 func (r *TeamRepo) GetRole(ctx context.Context, teamID, userID string) (model.Role, error) {
 	var role model.Role
-	err := r.db.Pool.QueryRow(ctx,
-		`SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID,
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT tm.role
+		FROM team_members tm JOIN teams t ON t.id = tm.team_id
+		JOIN users u ON u.id = tm.user_id AND u.company_id = t.company_id
+		WHERE tm.team_id = $1 AND tm.user_id = $2`, teamID, userID,
 	).Scan(&role)
 	if err != nil {
 		if isNoRows(err) {
@@ -125,12 +138,24 @@ func (r *TeamRepo) ListMembers(ctx context.Context, teamID string) ([]model.Team
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.TeamMember])
 }
 
+// AddMember adds the user to the team, or updates their role if already a
+// member. Fails with ErrConflictOrNotFound unless the team and user exist and
+// the user belongs to the team's company.
 func (r *TeamRepo) AddMember(ctx context.Context, teamID, userID string, role model.Role) error {
-	_, err := r.db.Pool.Exec(ctx, `
-		INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3)
+	ct, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO team_members (team_id, user_id, role)
+		SELECT t.id, u.id, $3
+		FROM teams t JOIN users u ON u.company_id = t.company_id
+		WHERE t.id = $1 AND u.id = $2
 		ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
 		teamID, userID, role)
-	return err
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrConflictOrNotFound
+	}
+	return nil
 }
 
 func (r *TeamRepo) UpdateMemberRole(ctx context.Context, teamID, userID string, role model.Role) error {
