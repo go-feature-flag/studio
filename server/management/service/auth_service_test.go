@@ -363,6 +363,7 @@ func TestExchangeErrors(t *testing.T) {
 			s := authExchangeService(t, users, tt.claims)
 			_, _, err := s.Exchange(t.Context(), "code", "verifier", testNonce)
 			assert.ErrorContains(t, err, tt.wantErr)
+			assert.ErrorIs(t, err, ErrLoginRejected, "an IdP-side problem, not a server failure")
 		})
 	}
 

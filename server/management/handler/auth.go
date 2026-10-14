@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/subtle"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -17,6 +19,7 @@ import (
 
 const stateCookie = "goff_mgmt_oidc_state"
 
+// AuthHandler serves the OIDC login, logout and the current user.
 type AuthHandler struct {
 	cfg       config.Config
 	auth      *service.AuthService
@@ -40,7 +43,7 @@ func (h *AuthHandler) Login(c *echo.Context) error {
 	// The cookie carries all three (none contains a "."); only
 	// state and the PKCE challenge travel through the provider redirect.
 	ck := h.cookie(stateCookie, state+"."+verifier+"."+nonce) //nolint:gosec // Secure: see cookie()
-	ck.Domain, ck.Expires = "", time.Now().Add(10*time.Minute)
+	ck.Domain, ck.MaxAge = "", int((10 * time.Minute).Seconds())
 	c.SetCookie(ck)
 	return c.Redirect(http.StatusFound, h.auth.AuthURL(state, verifier, nonce))
 }
@@ -56,20 +59,29 @@ func (h *AuthHandler) Callback(c *echo.Context) error {
 		return badRequest(c, "invalid state")
 	}
 	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[0] != state {
+	if len(parts) != 3 || parts[0] == "" || subtle.ConstantTimeCompare([]byte(parts[0]), []byte(state)) != 1 {
 		return badRequest(c, "invalid state")
 	}
 	cleared := h.cookie(stateCookie, "") //nolint:gosec // Secure: see cookie()
 	cleared.Domain, cleared.MaxAge = "", -1
 	c.SetCookie(cleared)
+	// The IdP sends ?error=… (e.g. access_denied) instead of a code.
+	if idpErr := c.QueryParam("error"); idpErr != "" || code == "" {
+		slog.WarnContext(c.Request().Context(), "oidc callback without code", "error", idpErr)
+		return badRequest(c, "login failed")
+	}
 	_, jwtStr, err := h.auth.Exchange(c.Request().Context(), code, parts[1], parts[2])
 	if err != nil {
 		// Don't echo the cause: it can leak IdP or Postgres details.
 		slog.ErrorContext(c.Request().Context(), "oidc callback failed", "error", err)
-		return badRequest(c, "login failed")
+		if errors.Is(err, service.ErrLoginRejected) {
+			return badRequest(c, "login failed")
+		}
+		return internal(c, "login failed")
 	}
 	session := h.cookie(middleware.SessionCookieName, jwtStr) //nolint:gosec // Secure: see cookie()
-	session.Expires = time.Now().Add(h.cfg.Auth.SessionMaxAge)
+	// MaxAge, unlike Expires, doesn't depend on the browser's clock.
+	session.MaxAge = int(h.cfg.Auth.SessionMaxAge.Seconds())
 	c.SetCookie(session)
 	dest := h.cfg.Auth.PostLoginRedirect
 	if dest == "" {
@@ -116,7 +128,9 @@ func (h *AuthHandler) Me(c *echo.Context) error {
 	if u == nil {
 		return notFound(c, "user not found")
 	}
-	u.IsSuperAdmin = claims.IsSuperAdmin // the DB flag lags a config demotion until next login
+	// The stored flag isn't updated until the next login; the session's value
+	// also checks adminEmails.
+	u.IsSuperAdmin = claims.IsSuperAdmin
 	mem, err := h.teams.Memberships(c.Request().Context(), claims.UserID)
 	if err != nil {
 		slog.ErrorContext(c.Request().Context(), "failed to load membership", "error", err)

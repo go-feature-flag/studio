@@ -21,6 +21,7 @@ import (
 	"github.com/gofeatureflag/flag-management-system/server/management/service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -29,8 +30,10 @@ const (
 )
 
 // fakeOIDC is a minimal OIDC provider: discovery, JWKS, and a token endpoint
-// that returns an RS256 ID token for email, with testNonce. It returns the
-// issuer URL.
+// that returns an RS256 ID token for email, with testNonce. It enforces PKCE:
+// the code must be the S256 challenge of the posted code_verifier (a real IdP
+// remembers the challenge sent with the authorization request instead). It
+// returns the issuer URL.
 func fakeOIDC(t *testing.T, email string) string {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -54,7 +57,14 @@ func fakeOIDC(t *testing.T, email string) string {
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: &key.PublicKey, KeyID: "k1", Algorithm: "RS256", Use: "sig"}}})
 	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil ||
+			oauth2.S256ChallengeFromVerifier(r.PostForm.Get("code_verifier")) != r.PostForm.Get("code") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+			return
+		}
 		now := time.Now().Unix()
 		claims, _ := json.Marshal(map[string]any{
 			"iss": issuer, "aud": testClientID, "sub": "sub-" + email, "iat": now, "exp": now + 3600,
@@ -118,8 +128,12 @@ func TestAuthHandlerLogin(t *testing.T) {
 	assert.Equal(t, parts[0], loc.Query().Get("state"))
 	assert.Equal(t, parts[2], loc.Query().Get("nonce"))
 	assert.Equal(t, "S256", loc.Query().Get("code_challenge_method"))
+	assert.Equal(t, oauth2.S256ChallengeFromVerifier(parts[1]), loc.Query().Get("code_challenge"))
 	assert.True(t, state.HttpOnly)
 	assert.True(t, state.Secure)
+	assert.Equal(t, http.SameSiteLaxMode, state.SameSite)
+	assert.Equal(t, 600, state.MaxAge)
+	assert.Empty(t, state.Domain, "host-only")
 }
 
 func TestAuthHandlerCallback(t *testing.T) {
@@ -127,24 +141,42 @@ func TestAuthHandlerCallback(t *testing.T) {
 	issuer := fakeOIDC(t, "login@acme.com")
 	cfg := authConfig(issuer)
 	auth := newAuthService(t, cfg, repository.NewUserRepo(db))
+	verifier := oauth2.GenerateVerifier()
+	code := oauth2.S256ChallengeFromVerifier(verifier)
+	validCookie := "abc." + verifier + "." + testNonce
+	// A closed pool makes the user upsert fail after a valid exchange.
+	broken, err := repository.NewDB(t.Context(), config.DBConfig{URL: db.Pool.Config().ConnString()})
+	require.NoError(t, err)
+	broken.Close()
 
 	rejected := []struct {
-		name, cookie, wantMsg string
+		name, query, cookie string
+		auth                *service.AuthService
+		wantStatus          int
+		wantMsg             string
 	}{
-		{"missing state cookie", "", "invalid state"},
-		{"mismatched state", "other.v." + testNonce, "invalid state"},
-		{"state only (no verifier/nonce)", "abc", "invalid state"},
-		{"exchange failure is not echoed", "abc.v.wrong-nonce", "login failed"},
+		{"missing state cookie", "state=abc&code=" + code, "", auth, http.StatusBadRequest, "invalid state"},
+		{"mismatched state", "state=abc&code=" + code, "other." + verifier + "." + testNonce, auth,
+			http.StatusBadRequest, "invalid state"},
+		{"state only (no verifier/nonce)", "state=abc&code=" + code, "abc", auth, http.StatusBadRequest, "invalid state"},
+		{"IdP error instead of a code", "state=abc&error=access_denied", validCookie, auth,
+			http.StatusBadRequest, "login failed"},
+		{"wrong PKCE verifier", "state=abc&code=" + code, "abc." + oauth2.GenerateVerifier() + "." + testNonce, auth,
+			http.StatusBadRequest, "login failed"},
+		{"nonce mismatch", "state=abc&code=" + code, "abc." + verifier + ".wrong", auth,
+			http.StatusBadRequest, "login failed"},
+		{"database failure is a 500, not the user's fault", "state=abc&code=" + code, validCookie,
+			newAuthService(t, cfg, repository.NewUserRepo(broken)), http.StatusInternalServerError, "login failed"},
 	}
-	h := NewAuthHandler(cfg, auth, nil, nil, nil)
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {
-			c, rec := reqCtxQuery(http.MethodGet, "state=abc&code=x")
+			h := NewAuthHandler(cfg, tt.auth, nil, nil, nil)
+			c, rec := reqCtxQuery(http.MethodGet, tt.query)
 			if tt.cookie != "" {
 				c.Request().AddCookie(&http.Cookie{Name: stateCookie, Value: tt.cookie})
 			}
 			require.NoError(t, h.Callback(c))
-			assert.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.Equal(t, tt.wantStatus, rec.Code)
 			assert.Equal(t, tt.wantMsg, decodeResp(t, rec).Message)
 			assert.Nil(t, cookieNamed(rec, middleware.SessionCookieName), "no session on a failed login")
 		})
@@ -161,9 +193,8 @@ func TestAuthHandlerCallback(t *testing.T) {
 			cfg := cfg
 			cfg.Auth.PostLoginRedirect = tt.redirect
 			h := NewAuthHandler(cfg, auth, nil, nil, nil)
-			c, rec := reqCtxQuery(http.MethodGet, "state=abc&code=x")
-			c.Request().AddCookie(&http.Cookie{Name: stateCookie, Value: "abc.verifier." + testNonce})
-			before := time.Now()
+			c, rec := reqCtxQuery(http.MethodGet, "state=abc&code="+code)
+			c.Request().AddCookie(&http.Cookie{Name: stateCookie, Value: validCookie})
 			require.NoError(t, h.Callback(c))
 
 			assert.Equal(t, http.StatusFound, rec.Code)
@@ -177,7 +208,7 @@ func TestAuthHandlerCallback(t *testing.T) {
 			assert.True(t, session.HttpOnly)
 			assert.True(t, session.Secure)
 			assert.Equal(t, http.SameSiteLaxMode, session.SameSite)
-			assert.WithinDuration(t, before.Add(time.Hour), session.Expires, time.Minute)
+			assert.Equal(t, 3600, session.MaxAge)
 			state := cookieNamed(rec, stateCookie)
 			require.NotNil(t, state)
 			assert.Negative(t, state.MaxAge, "the one-shot state cookie is cleared")
