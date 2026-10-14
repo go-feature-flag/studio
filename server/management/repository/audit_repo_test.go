@@ -238,6 +238,11 @@ func TestAuditRepoRecord(t *testing.T) {
 			wantErr: repository.ErrAuditNoCompany.Error(),
 		},
 		{
+			name:    "team of another company is rejected",
+			in:      repository.AuditInput{CompanyID: &fx.companyB, TeamID: &fx.teamA1},
+			wantErr: repository.ErrAuditNoCompany.Error(),
+		},
+		{
 			name:    "unencodable payload is rejected",
 			in:      repository.AuditInput{CompanyID: &fx.companyA, After: make(chan int)},
 			wantErr: "marshal audit payload: json: unsupported type: chan int",
@@ -301,18 +306,28 @@ func TestAuditRepoRecordInTx(t *testing.T) {
 	in := repository.AuditInput{CompanyID: &fx.companyA,
 		Action: model.AuditActionUpdate, TargetType: model.AuditTargetCompany, TargetID: fx.companyA}
 
+	bad := in
+	bad.Action = "login"
+
 	tests := []struct {
-		name      string
-		commit    bool
-		wantTotal int
+		name        string
+		commit      bool
+		failedFirst bool
+		wantTotal   int
 	}{
 		{name: "rollback discards the entry", commit: false, wantTotal: 0},
 		{name: "commit keeps the entry", commit: true, wantTotal: 1},
+		{name: "failed write leaves the tx usable", commit: true, failedFirst: true, wantTotal: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			_, err := db.Pool.Exec(ctx, `TRUNCATE audit_log`)
+			require.NoError(t, err)
 			tx, err := db.Pool.Begin(ctx)
 			require.NoError(t, err)
+			if tt.failedFirst {
+				require.ErrorContains(t, repo.Record(ctx, tx, bad), "audit_log_action_check")
+			}
 			require.NoError(t, repo.Record(ctx, tx, in))
 			if tt.commit {
 				require.NoError(t, tx.Commit(ctx))

@@ -9,13 +9,16 @@ import (
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
 	// ErrAuditNoCompany means the entry has no CompanyID and its TeamID doesn't
-	// resolve to a team (e.g. the team was deleted first). Audit scoping relies
-	// on company_id, so such an entry would be invisible to company admins.
-	ErrAuditNoCompany = errors.New("audit entry has no company: set CompanyID or an existing TeamID")
+	// resolve to a team (e.g. the team was deleted first), or TeamID names a
+	// team of another company. Audit scoping relies on company_id, so such an
+	// entry would be invisible to, or leak into, the wrong company's admins.
+	ErrAuditNoCompany = errors.New(
+		"audit entry has no company: set CompanyID or an existing TeamID, and TeamID must belong to CompanyID")
 	// ErrAuditMemberScope guards against a member scope that would otherwise
 	// return company-level events of every company.
 	ErrAuditMemberScope = errors.New("audit scope: MemberUserID requires CompanyID")
@@ -43,7 +46,14 @@ type AuditInput struct {
 // omitted when TeamID names a team that still exists; otherwise Record returns
 // ErrAuditNoCompany, so callers deleting a team must pass CompanyID.
 func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error {
-	err := r.record(ctx, tx, in)
+	var err error
+	if tx == nil {
+		err = r.record(ctx, r.db.Pool.Exec, in)
+	} else {
+		// A failed statement aborts the whole Postgres tx; the savepoint keeps
+		// the caller's change committable when it drops the audit error.
+		err = pgx.BeginFunc(ctx, tx, func(sp pgx.Tx) error { return r.record(ctx, sp.Exec, in) })
+	}
 	// Most callers treat audit as best-effort and drop the error, so log it here
 	// to keep a broken audit pipeline visible.
 	if err != nil {
@@ -53,7 +63,9 @@ func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error 
 	return err
 }
 
-func (r *AuditRepo) record(ctx context.Context, tx pgx.Tx, in AuditInput) error {
+type execFunc func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+
+func (r *AuditRepo) record(ctx context.Context, exec execFunc, in AuditInput) error {
 	before, errBefore := marshalAny(in.Before)
 	after, errAfter := marshalAny(in.After)
 	meta, errMeta := marshalAny(in.Metadata)
@@ -62,20 +74,18 @@ func (r *AuditRepo) record(ctx context.Context, tx pgx.Tx, in AuditInput) error 
 	}
 
 	// actor_email is a snapshot so the entry keeps its actor after the user is
-	// deleted. The WHERE turns an unresolvable company into zero rows.
+	// deleted. The WHERE turns an unresolvable company, or a team of another
+	// company, into zero rows.
 	q := `INSERT INTO audit_log (actor_user_id, actor_email, company_id, team_id, flagset_id, flag_id,
 	                            action, target_type, target_id, before, after, metadata)
 	      SELECT $1::uuid, (SELECT email FROM users WHERE id = $1::uuid), c.id,
 	             $3::uuid, $4::uuid, $5::uuid, $6::text, $7::text, $8::text, $9::jsonb, $10::jsonb, $11::jsonb
 	      FROM (SELECT COALESCE($2::uuid, (SELECT company_id FROM teams WHERE id = $3::uuid)) AS id) c
-	      WHERE c.id IS NOT NULL`
+	      WHERE c.id IS NOT NULL
+	        AND NOT EXISTS (SELECT 1 FROM teams t WHERE t.id = $3::uuid AND t.company_id <> c.id)`
 	args := []any{
 		in.ActorUserID, in.CompanyID, in.TeamID, in.FlagsetID, in.FlagID,
 		in.Action, in.TargetType, in.TargetID, before, after, meta,
-	}
-	exec := r.db.Pool.Exec
-	if tx != nil {
-		exec = tx.Exec
 	}
 	ct, err := exec(ctx, q, args...)
 	if err != nil {
