@@ -35,10 +35,12 @@ func TestAuditServiceList(t *testing.T) {
 	// the member isn't on.
 	mine, err := teams.Create(ctx, admin.ID, acme.ID, &model.CreateTeamRequest{Name: "Mine", AdminEmail: member.Email})
 	require.NoError(t, err)
-	_, err = teams.Create(ctx, admin.ID, acme.ID, &model.CreateTeamRequest{Name: "Theirs", AdminEmail: admin.Email})
+	theirs, err := teams.Create(ctx, admin.ID, acme.ID, &model.CreateTeamRequest{Name: "Theirs", AdminEmail: admin.Email})
+	require.NoError(t, err)
+	_, err = teams.Update(ctx, admin.ID, theirs.ID, &model.UpdateTeamRequest{Description: new("d")})
 	require.NoError(t, err)
 
-	create := model.AuditActionCreate
+	create, update := model.AuditActionCreate, model.AuditActionUpdate
 	tests := []struct {
 		name       string
 		userID     string
@@ -47,10 +49,10 @@ func TestAuditServiceList(t *testing.T) {
 		wantTotal  int
 		check      func(t *testing.T, entries []model.AuditEntry)
 	}{
-		{name: "super admin sees every company", userID: super.ID, superAdmin: true, wantTotal: 6},
+		{name: "super admin sees every company", userID: super.ID, superAdmin: true, wantTotal: 7},
 		{name: "super admin narrows by company", userID: super.ID, superAdmin: true,
 			filters: model.AuditFilters{CompanyID: &beta.ID}, wantTotal: 1},
-		{name: "company admin sees only their company", userID: admin.ID, wantTotal: 5,
+		{name: "company admin sees only their company", userID: admin.ID, wantTotal: 6,
 			check: func(t *testing.T, entries []model.AuditEntry) {
 				for _, e := range entries {
 					assert.Equal(t, acme.ID, *e.CompanyID)
@@ -63,24 +65,33 @@ func TestAuditServiceList(t *testing.T) {
 				for _, e := range entries {
 					if e.TeamID != nil {
 						assert.Equal(t, mine.ID, *e.TeamID)
+					} else {
+						assert.Equal(t, model.AuditTargetCompany, e.TargetType)
 					}
 				}
 			}},
+		{name: "member can't filter into a team they aren't on", userID: member.ID,
+			filters: model.AuditFilters{TeamID: &theirs.ID}, wantTotal: 0},
+		{name: "page size limits the page, not the total", userID: admin.ID,
+			filters: model.AuditFilters{PageSize: 2}, wantTotal: 6},
 		{name: "user without a company sees nothing", userID: loner.ID, wantTotal: 0},
 		{name: "filter by actor excludes other actors", userID: super.ID, superAdmin: true,
 			filters: model.AuditFilters{ActorUserID: &other.ID}, wantTotal: 1,
 			check: func(t *testing.T, entries []model.AuditEntry) {
 				assert.Equal(t, "other@x.com", *entries[0].ActorEmail)
 			}},
-		{name: "filter by action", userID: super.ID, superAdmin: true,
+		{name: "filter by action create", userID: super.ID, superAdmin: true,
 			filters: model.AuditFilters{Action: &create}, wantTotal: 6},
+		{name: "filter by action update", userID: super.ID, superAdmin: true,
+			filters: model.AuditFilters{Action: &update}, wantTotal: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			entries, total, err := svc.List(ctx, tt.userID, tt.superAdmin, tt.filters)
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantTotal, total)
-			assert.Len(t, entries, tt.wantTotal)
+			_, pageSize := model.ClampPage(1, tt.filters.PageSize)
+			assert.Len(t, entries, min(tt.wantTotal, pageSize))
 			assert.NotNil(t, entries, "never nil, so it encodes as []")
 			if tt.check != nil {
 				tt.check(t, entries)
@@ -92,6 +103,8 @@ func TestAuditServiceList(t *testing.T) {
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
 		_, _, err := svc.List(cancelled, member.ID, false, model.AuditFilters{})
-		assert.ErrorIs(t, err, context.Canceled)
+		assert.ErrorIs(t, err, context.Canceled, "membership lookup")
+		_, _, err = svc.List(cancelled, super.ID, true, model.AuditFilters{})
+		assert.ErrorIs(t, err, context.Canceled, "list")
 	})
 }

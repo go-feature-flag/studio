@@ -20,7 +20,8 @@ func NewAuditService(repo *repository.AuditRepo, companies *repository.CompanyRe
 // isolation is decided here, from the user, never from the filters: a super
 // admin sees every company, a company admin their company, any other company
 // member their teams plus company-level events, and a user with no company
-// nothing.
+// nothing. Team scoping follows current membership: a member no longer sees
+// a team's history after leaving it, including its deletion.
 func (s *AuditService) List(
 	ctx context.Context, userID string, superAdmin bool, f model.AuditFilters,
 ) ([]model.AuditEntry, int, error) {
@@ -38,9 +39,5 @@ func (s *AuditService) List(
 			scope.MemberUserID = &userID
 		}
 	}
-	entries, total, err := s.repo.List(ctx, scope, f)
-	if entries == nil && err == nil {
-		entries = []model.AuditEntry{}
-	}
-	return entries, total, err
+	return s.repo.List(ctx, scope, f)
 }
