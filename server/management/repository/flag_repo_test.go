@@ -299,21 +299,21 @@ func TestFlagRepoListTeamTags(t *testing.T) {
 		}))
 	}
 	setTags(f1.ID, []string{"beta", "prod"})
-	setTags(f2.ID, []string{"beta", "staging"})
+	setTags(f2.ID, []string{"Beta", "staging"})
 	setTags(fDel.ID, []string{"only-on-deleted"})
 	setTags(fOther.ID, []string{"other-team-tag"})
 
-	// Distinct, sorted, team-scoped (excludes the other team's tag).
+	// Distinct (case-insensitively), sorted, team-scoped (excludes the other team's tag).
 	tags, err := repo.ListTeamTags(ctx, team.ID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"beta", "only-on-deleted", "prod", "staging"}, tags)
+	assert.Equal(t, []string{"Beta", "only-on-deleted", "prod", "staging"}, tags)
 
 	// Soft-deleting the flag drops its exclusive tag and its mirror rows.
 	require.NoError(t, repo.SoftDelete(ctx, fDel.ID))
 	assert.Equal(t, 0, countFlagTags(t, db, fDel.ID))
 	tags, err = repo.ListTeamTags(ctx, team.ID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"beta", "prod", "staging"}, tags)
+	assert.Equal(t, []string{"Beta", "prod", "staging"}, tags)
 }
 
 func TestFlagRepoListByTeamTagFilter(t *testing.T) {
@@ -335,7 +335,7 @@ func TestFlagRepoListByTeamTagFilter(t *testing.T) {
 		}))
 	}
 	setTags(both.ID, []string{"beta", "prod"})
-	setTags(onlyBeta.ID, []string{"beta"})
+	setTags(onlyBeta.ID, []string{"Beta"})
 	_ = none
 
 	names := func(items []model.FlagInstance) []string {
@@ -351,7 +351,7 @@ func TestFlagRepoListByTeamTagFilter(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"both", "only-beta", "none"}, names(all))
 
-	// Single tag → flags carrying it.
+	// Single tag → flags carrying it, whatever its case.
 	betaOnly, _, err := repo.ListByTeam(ctx, team.ID, model.TeamFlagFilters{Tags: []string{"beta"}})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"both", "only-beta"}, names(betaOnly))
@@ -365,6 +365,10 @@ func TestFlagRepoListByTeamTagFilter(t *testing.T) {
 	dup, _, err := repo.ListByTeam(ctx, team.ID, model.TeamFlagFilters{Tags: []string{"beta", "beta"}})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"both", "only-beta"}, names(dup))
+
+	upper, _, err := repo.ListByTeam(ctx, team.ID, model.TeamFlagFilters{Tags: []string{"BETA"}})
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"both", "only-beta"}, names(upper))
 
 	// A tag no flag has → empty.
 	empty, _, err := repo.ListByTeam(ctx, team.ID, model.TeamFlagFilters{Tags: []string{"nonexistent"}})
@@ -492,4 +496,96 @@ func TestFlagRepoListByTeamFiltersAndPaging(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, names(items), "%s desc=%v", tc.sort, tc.desc)
 	}
+}
+
+func TestFlagRepoCreateNameTaken(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagRepo(db)
+	ctx := t.Context()
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+	testutil.SeedFlag(t, db, fs.ID, "a", nil, nil)
+
+	err := pgx.BeginFunc(ctx, db.Pool, func(tx pgx.Tx) error { _, err := repo.Create(ctx, tx, fs.ID, "a"); return err })
+	assert.ErrorIs(t, err, repository.ErrFlagNameTaken)
+}
+
+// TestFlagRepoListByTeamScoping: team-wide reads never return another team's
+// flags, and the "unknown" type filter finds flags without a version.
+func TestFlagRepoListByTeamScoping(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagRepo(db)
+	ctx := t.Context()
+	company := testutil.SeedCompany(t, db, "Acme")
+	team := testutil.SeedTeam(t, db, company.ID, "Platform")
+	other := testutil.SeedTeam(t, db, company.ID, "Other")
+	alice := testutil.SeedUser(t, db, "alice@acme.com", "Alice", false)
+	bob := testutil.SeedUser(t, db, "bob@acme.com", "Bob", false)
+	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+	testutil.SeedFlag(t, db, fs.ID, "mine", nil, &alice.ID)
+	testutil.SeedFlag(t, db, testutil.SeedFlagset(t, db, other.ID, "x").ID, "theirs", nil, &bob.ID)
+	require.NoError(t, pgx.BeginFunc(ctx, db.Pool, func(tx pgx.Tx) error {
+		_, err := repo.Create(ctx, tx, fs.ID, "no-version")
+		return err
+	}))
+
+	tests := []struct {
+		name    string
+		filters model.TeamFlagFilters
+		want    []string
+	}{
+		{name: "only the team's flags", want: []string{"mine", "no-version"}},
+		{name: "unknown type finds version-less flags", filters: model.TeamFlagFilters{Type: new("unknown")},
+			want: []string{"no-version"}},
+		{name: "another team's owner matches nothing", filters: model.TeamFlagFilters{Owner: new("Bob")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items, total, err := repo.ListByTeam(ctx, team.ID, tt.filters)
+			require.NoError(t, err)
+			got := make([]string, 0, len(items))
+			for _, it := range items {
+				got = append(got, it.Name)
+			}
+			assert.ElementsMatch(t, tt.want, got)
+			assert.Equal(t, len(tt.want), total)
+		})
+	}
+
+	owners, err := repo.ListTeamOwners(ctx, team.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Alice"}, owners)
+}
+
+// TestFlagRepoFlagsetDeleteRacingSave: a flagset delete that starts while a
+// flag save is between its version insert and its tag mirror waits for the
+// save instead of deadlocking, then deletes the tags the save wrote.
+func TestFlagRepoFlagsetDeleteRacingSave(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	flags := repository.NewFlagRepo(db)
+	versions := repository.NewFlagVersionRepo(db)
+	ctx := t.Context()
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+	flag := testutil.SeedFlag(t, db, fs.ID, "f", nil, nil)
+
+	tx, err := db.Pool.Begin(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	v, err := versions.Insert(ctx, tx, flag.ID, json.RawMessage(testutil.DefaultFlagPayload), "", nil)
+	require.NoError(t, err)
+	require.NoError(t, flags.UpdateCurrentVersion(ctx, tx, flag.ID, v.ID))
+
+	done := make(chan error, 1)
+	go func() { done <- repository.NewFlagsetRepo(db).SoftDelete(ctx, fs.ID) }()
+	select {
+	case err := <-done:
+		t.Fatalf("delete did not wait for the save: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	require.NoError(t, flags.ReplaceFlagTags(ctx, tx, flag.ID, []string{"a", "b"}))
+	require.NoError(t, tx.Commit(ctx))
+
+	require.NoError(t, <-done)
+	assert.Equal(t, 0, countFlagTags(t, db, flag.ID))
 }

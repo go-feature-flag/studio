@@ -3,12 +3,17 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrFlagNameTaken means another live flag in the same flagset has the name.
+var ErrFlagNameTaken = errors.New("flag name already used in this flagset")
 
 type FlagRepo struct{ db *DB }
 
@@ -30,6 +35,10 @@ func (r *FlagRepo) Create(ctx context.Context, tx pgx.Tx, flagsetID, name string
 	if err != nil {
 		if isNoRows(err) {
 			return nil, ErrNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "flags_flagset_name_live_unique" {
+			return nil, ErrFlagNameTaken
 		}
 		return nil, err
 	}
@@ -131,7 +140,9 @@ func (r *FlagRepo) ListByTeam(
 ) ([]model.FlagInstance, int, error) {
 	qb := NewQueryBuilder(1)
 	if len(filters.Tags) > 0 {
-		qb.Add("$%d::text[] <@ ARRAY(SELECT ft.tag FROM flag_tags ft WHERE ft.flag_id = f.id)", filters.Tags)
+		// Case-insensitive, like the per-flag dedupe in model.FlagTagsFromPayload.
+		qb.Add("ARRAY(SELECT lower(x) FROM unnest($%d::text[]) x)"+
+			" <@ ARRAY(SELECT lower(ft.tag) FROM flag_tags ft WHERE ft.flag_id = f.id)", filters.Tags)
 	}
 	if filters.Name != nil && *filters.Name != "" {
 		qb.Add("f.name ILIKE $%d", likeContains(*filters.Name))
@@ -140,7 +151,9 @@ func (r *FlagRepo) ListByTeam(
 		qb.Add("f.flagset_id = $%d", *filters.FlagsetID)
 	}
 	if filters.Type != nil {
-		qb.Add("fv.flag_type = $%d", *filters.Type)
+		// Same expression as the SELECT, so a version-less flag listed as
+		// "unknown" is also found by that filter.
+		qb.Add("COALESCE(fv.flag_type, 'unknown') = $%d", *filters.Type)
 	}
 	if filters.Owner != nil && !filters.Unassigned {
 		qb.Add("u.name = $%d", *filters.Owner)
@@ -243,16 +256,17 @@ func (r *FlagRepo) ReplaceFlagTags(ctx context.Context, tx pgx.Tx, flagID string
 }
 
 // ListTeamTags returns the distinct tags used across a team's non-deleted flags,
-// sorted alphabetically. Backed by the flag_tags mirror table so it stays cheap
-// and is not bound by the team-flags list's 1000-row cap.
+// sorted alphabetically, from the flag_tags mirror. Tags differing only in case
+// are one tag (as in the ListByTeam filter); the first spelling in byte order
+// is returned.
 func (r *FlagRepo) ListTeamTags(ctx context.Context, teamID string) ([]string, error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT DISTINCT ft.tag
+		SELECT DISTINCT ON (lower(ft.tag)) ft.tag
 		FROM flag_tags ft
 		JOIN flags f ON f.id = ft.flag_id
 		JOIN flagsets fs ON fs.id = f.flagset_id
 		WHERE fs.team_id = $1 AND f.deleted_at IS NULL
-		ORDER BY ft.tag`, teamID)
+		ORDER BY lower(ft.tag), ft.tag COLLATE "C"`, teamID)
 	if err != nil {
 		return nil, err
 	}

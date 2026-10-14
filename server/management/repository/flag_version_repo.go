@@ -46,12 +46,14 @@ func (r *FlagVersionRepo) Insert(
 	return &v, nil
 }
 
+// Version reads hide the history of a deleted flag, like the flag reads do.
 func (r *FlagVersionRepo) GetByFlagAndNumber(ctx context.Context, flagID string, num int) (*model.FlagVersion, error) {
 	var v model.FlagVersion
 	err := r.db.Pool.QueryRow(ctx, `
 		SELECT fv.id, fv.flag_id, fv.version_number, fv.payload, fv.comment, fv.created_by, fv.created_at,
 		       u.name AS created_by_name
 		FROM flag_versions fv
+		JOIN flags f ON f.id = fv.flag_id AND f.deleted_at IS NULL
 		LEFT JOIN users u ON u.id = fv.created_by
 		WHERE fv.flag_id = $1 AND fv.version_number = $2`,
 		flagID, num,
@@ -69,7 +71,8 @@ func (r *FlagVersionRepo) ListByFlag(
 	ctx context.Context, flagID string, limit, offset int,
 ) ([]model.FlagVersion, int, error) {
 	var total int
-	err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flag_versions WHERE flag_id = $1`, flagID).Scan(&total)
+	err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flag_versions fv
+		JOIN flags f ON f.id = fv.flag_id AND f.deleted_at IS NULL WHERE fv.flag_id = $1`, flagID).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -77,6 +80,7 @@ func (r *FlagVersionRepo) ListByFlag(
 		SELECT fv.id, fv.flag_id, fv.version_number, fv.payload, fv.comment, fv.created_by, fv.created_at,
 		       u.name AS created_by_name
 		FROM flag_versions fv
+		JOIN flags f ON f.id = fv.flag_id AND f.deleted_at IS NULL
 		LEFT JOIN users u ON u.id = fv.created_by
 		WHERE fv.flag_id = $1
 		ORDER BY fv.version_number DESC

@@ -63,4 +63,14 @@ func TestFlagVersionRepoInsertAndList(t *testing.T) {
 	assert.Equal(t, 2, total)
 	require.Len(t, page2, 1)
 	assert.Equal(t, 1, page2[0].VersionNumber)
+
+	// A deleted flag's history is hidden.
+	require.NoError(t, repository.NewFlagRepo(db).SoftDelete(ctx, flag.ID))
+	gone, err := versions.GetByFlagAndNumber(ctx, flag.ID, 1)
+	require.NoError(t, err)
+	assert.Nil(t, gone)
+	list, total, err = versions.ListByFlag(ctx, flag.ID, 10, 0)
+	require.NoError(t, err)
+	assert.Zero(t, total)
+	assert.Empty(t, list)
 }
