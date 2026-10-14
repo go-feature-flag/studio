@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
@@ -42,23 +41,13 @@ func ensureNoCompany(ctx context.Context, companies *repository.CompanyRepo) err
 	return nil
 }
 
-// validateDisplayName trims a company display name in place and rejects it
-// when empty or longer than 120 characters, for both create and update.
-func validateDisplayName(name *string) error {
-	*name = strings.TrimSpace(*name)
-	if *name == "" {
-		return model.ValidationErrors{{Field: "displayName", Message: "displayName is required"}}
-	}
-	if utf8.RuneCountInString(*name) > 120 {
-		return model.ValidationErrors{{Field: "displayName", Message: "max 120 characters"}}
-	}
-	return nil
-}
-
+// Create adds a company without members: it is super-admin only, and the
+// super admin then adds the first admin. Onboarding creates the company
+// together with its admin instead.
 func (s *CompanyService) Create(
 	ctx context.Context, actorID string, req *model.CreateCompanyRequest,
 ) (*model.Company, error) {
-	if err := validateDisplayName(&req.DisplayName); err != nil {
+	if err := validateName(&req.DisplayName, "displayName"); err != nil {
 		return nil, err
 	}
 	if s.mono {
@@ -95,7 +84,7 @@ func (s *CompanyService) List(ctx context.Context, userID string, superAdmin boo
 		return nil, err
 	}
 	if m == nil {
-		return nil, nil
+		return []model.Company{}, nil
 	}
 	c, err := s.companies.GetByID(ctx, m.CompanyID)
 	if err != nil || c == nil {
@@ -116,13 +105,13 @@ func (s *CompanyService) Update(
 		return nil, ErrNotFound
 	}
 	if req.DisplayName != nil {
-		if err := validateDisplayName(req.DisplayName); err != nil {
+		if err := validateName(req.DisplayName, "displayName"); err != nil {
 			return nil, err
 		}
 	}
 	c, err := s.companies.Update(ctx, id, req.DisplayName, req.Description)
 	if err != nil {
-		return nil, companyWriteError(err)
+		return nil, writeError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &c.ID,
@@ -141,7 +130,7 @@ func (s *CompanyService) Delete(ctx context.Context, actorID, id string) error {
 		return ErrNotFound
 	}
 	if err := s.companies.Delete(ctx, id); err != nil {
-		return companyWriteError(err)
+		return writeError(err)
 	}
 	// Recorded after the delete so a failed delete leaves no entry; audit_log
 	// has no foreign keys, so the entry outlives the company.
@@ -163,7 +152,8 @@ func (s *CompanyService) AddMember(
 	ctx context.Context, actorID, companyID string, req *model.AddCompanyMemberRequest,
 ) (*model.CompanyMember, bool, error) {
 	var errs model.ValidationErrors
-	if strings.TrimSpace(req.Email) == "" {
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Email == "" {
 		errs = append(errs, model.ValidationError{Field: "email", Message: "email is required"})
 	}
 	if !req.Role.IsValid() {
@@ -246,7 +236,7 @@ func (s *CompanyService) UpdateMember(
 	}
 	_, prev, err := s.companies.UpdateMemberRole(ctx, companyID, userID, role)
 	if err != nil {
-		return companyWriteError(err)
+		return writeError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID,
@@ -262,7 +252,7 @@ func (s *CompanyService) RemoveMember(ctx context.Context, actorID, companyID, u
 	}
 	prev, err := s.companies.RemoveMember(ctx, companyID, userID)
 	if err != nil {
-		return companyWriteError(err)
+		return writeError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID,
@@ -270,14 +260,6 @@ func (s *CompanyService) RemoveMember(ctx context.Context, actorID, companyID, u
 		Before: memberRole{string(prev)},
 	})
 	return nil
-}
-
-// companyWriteError maps repository errors of a company write to service errors.
-func companyWriteError(err error) error {
-	if errors.Is(err, repository.ErrNotFound) {
-		return ErrNotFound
-	}
-	return err
 }
 
 func (s *CompanyService) Membership(ctx context.Context, userID string) (*model.CompanyMembership, error) {

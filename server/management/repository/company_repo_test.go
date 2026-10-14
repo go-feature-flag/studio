@@ -88,6 +88,9 @@ func TestCompanyRepoMembership(t *testing.T) {
 	assert.Equal(t, model.CompanyRoleMember, mem.Role)
 
 	// SetMember to a different company conflicts (one company per user).
+	stray := testutil.SeedUser(t, db, "stray@x.com", "S", false)
+	_, _, err = repo.SetMember(ctx, "00000000-0000-0000-0000-000000000000", stray.ID, model.CompanyRoleMember)
+	assert.ErrorIs(t, err, repository.ErrConflictOrNotFound, "unknown company")
 	_, _, err = repo.SetMember(ctx, other.ID, user.ID, model.CompanyRoleMember)
 	assert.ErrorIs(t, err, repository.ErrConflictOrNotFound)
 

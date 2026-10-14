@@ -2,9 +2,11 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type CompanyRepo struct{ db *DB }
@@ -95,14 +97,17 @@ func (r *CompanyRepo) Update(ctx context.Context, id string, displayName, descri
 // transaction.
 func (r *CompanyRepo) Delete(ctx context.Context, id string) error {
 	err := pgx.BeginFunc(ctx, r.db.Pool, func(tx pgx.Tx) error {
+		// Locking the company first makes a concurrent SetMember's foreign-key
+		// check wait for the delete and then fail, instead of slipping a member
+		// in between the detach and the delete.
+		if err := tx.QueryRow(ctx, `SELECT id FROM companies WHERE id = $1 FOR UPDATE`, id).Scan(&id); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE users SET company_id = NULL, company_role = NULL, updated_at = NOW()
 			WHERE company_id = $1`, id); err != nil {
 			return err
 		}
-		ct, err := tx.Exec(ctx, `DELETE FROM companies WHERE id = $1`, id)
-		if err == nil && ct.RowsAffected() == 0 {
-			return ErrNotFound
-		}
+		_, err := tx.Exec(ctx, `DELETE FROM companies WHERE id = $1`, id)
 		return err
 	})
 	if isNoRows(err) {
@@ -160,7 +165,9 @@ func (r *CompanyRepo) memberWrite(
 	err := r.db.Pool.QueryRow(ctx, q, args...).
 		Scan(&m.ID, &m.CompanyID, &m.UserID, &m.Email, &m.Name, &m.Role, &m.CreatedAt, &prev)
 	if err != nil {
-		if isNoRows(err) {
+		// 23503: the company doesn't exist (or is being deleted).
+		var pgErr *pgconn.PgError
+		if isNoRows(err) || (errors.As(err, &pgErr) && pgErr.Code == "23503") {
 			return nil, "", notFound
 		}
 		return nil, "", err
