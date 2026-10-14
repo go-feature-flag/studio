@@ -589,3 +589,44 @@ func TestFlagRepoFlagsetDeleteRacingSave(t *testing.T) {
 	require.NoError(t, <-done)
 	assert.Equal(t, 0, countFlagTags(t, db, flag.ID))
 }
+
+func TestFlagRepoQueryErrors(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	flags := repository.NewFlagRepo(db)
+	versions := repository.NewFlagVersionRepo(db)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	id := "00000000-0000-0000-0000-000000000000"
+
+	_, err := flags.GetByID(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, _, err = flags.ListByFlagset(ctx, id, model.FlagFilters{})
+	assert.ErrorIs(t, err, context.Canceled)
+	_, _, err = flags.ListByTeam(ctx, id, model.TeamFlagFilters{})
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = flags.ListTeamOwners(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = flags.ListTeamTags(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, flags.SoftDelete(ctx, id), context.Canceled)
+	_, err = flags.GetFlagsetID(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = versions.GetByFlagAndNumber(ctx, id, 1)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, _, err = versions.ListByFlag(ctx, id, 10, 0)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, flags.SoftDelete(t.Context(), "not-a-uuid"), repository.ErrNotFound)
+
+	// Writes take the caller's tx: a failed statement surfaces its error.
+	tx, err := db.Pool.Begin(t.Context())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+	_, err = tx.Exec(t.Context(), `SELECT 1/0`)
+	require.Error(t, err)
+	_, err = flags.Create(t.Context(), tx, id, "f")
+	assert.ErrorContains(t, err, "25P02", "aborted tx")
+	assert.ErrorContains(t, flags.UpdateCurrentVersion(t.Context(), tx, id, id), "25P02")
+	assert.ErrorContains(t, flags.ReplaceFlagTags(t.Context(), tx, id, nil), "25P02")
+	_, err = versions.Insert(t.Context(), tx, id, nil, "", nil)
+	assert.ErrorContains(t, err, "25P02")
+}
