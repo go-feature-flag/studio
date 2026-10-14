@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
@@ -248,18 +249,18 @@ func (r *FlagRepo) ListTeamOwners(ctx context.Context, teamID string) ([]string,
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// UpdateCurrentVersion returns ErrNotFound when the flag is deleted, so the
-// caller rolls back instead of saving a version nobody can see.
-func (r *FlagRepo) UpdateCurrentVersion(ctx context.Context, tx pgx.Tx, flagID, versionID string) error {
-	tag, err := tx.Exec(ctx, `UPDATE flags SET current_version_id = $2, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL`, flagID, versionID)
-	if err != nil {
-		return err
+// UpdateCurrentVersion points the flag at versionID and returns its new
+// updated_at. ErrNotFound when the flag is deleted, so the caller rolls back
+// instead of saving a version nobody can see.
+func (r *FlagRepo) UpdateCurrentVersion(
+	ctx context.Context, tx pgx.Tx, flagID, versionID string,
+) (updatedAt time.Time, err error) {
+	err = tx.QueryRow(ctx, `UPDATE flags SET current_version_id = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL RETURNING updated_at`, flagID, versionID).Scan(&updatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrNotFound
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return updatedAt, err
 }
 
 // ReplaceFlagTags rewrites the flag_tags rows for a flag to exactly the supplied
@@ -293,31 +294,51 @@ func (r *FlagRepo) ListTeamTags(ctx context.Context, teamID string) ([]string, e
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-func (r *FlagRepo) SetDisabled(ctx context.Context, flagID string, disabled bool) error {
-	return r.db.execOne(ctx,
+// SetDisabled sets the flag's on/off state, inside tx when it is not nil.
+func (r *FlagRepo) SetDisabled(ctx context.Context, tx pgx.Tx, flagID string, disabled bool) error {
+	exec := r.db.Pool.Exec
+	if tx != nil {
+		exec = tx.Exec
+	}
+	tag, err := exec(ctx,
 		`UPDATE flags SET disabled = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID, disabled)
+	if err != nil {
+		if isNoRows(err) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SoftDelete marks the flag deleted and drops its flag_tags mirror rows in one
-// transaction, so a failure can't leave the flag deleted but report an error.
-// The tags are dropped so the mirror and its index don't accumulate dead rows
-// (reads already filter on deleted_at).
-func (r *FlagRepo) SoftDelete(ctx context.Context, flagID string) error {
-	return pgx.BeginFunc(ctx, r.db.Pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx,
-			`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID)
-		if err != nil {
-			if isNoRows(err) {
-				return ErrNotFound
-			}
-			return err
-		}
-		if tag.RowsAffected() == 0 {
+// transaction (tx, or its own when tx is nil), so a failure can't leave the
+// flag deleted but report an error. The tags are dropped so the mirror and its
+// index don't accumulate dead rows (reads already filter on deleted_at).
+func (r *FlagRepo) SoftDelete(ctx context.Context, tx pgx.Tx, flagID string) error {
+	if tx == nil {
+		return pgx.BeginFunc(ctx, r.db.Pool, func(tx pgx.Tx) error { return softDeleteFlag(ctx, tx, flagID) })
+	}
+	return softDeleteFlag(ctx, tx, flagID)
+}
+
+func softDeleteFlag(ctx context.Context, tx pgx.Tx, flagID string) error {
+	tag, err := tx.Exec(ctx,
+		`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID)
+	if err != nil {
+		if isNoRows(err) {
 			return ErrNotFound
 		}
-		_, err = tx.Exec(ctx, `DELETE FROM flag_tags WHERE flag_id = $1`, flagID)
 		return err
-	})
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM flag_tags WHERE flag_id = $1`, flagID)
+	return err
 }
 
 func (r *FlagRepo) GetFlagsetID(ctx context.Context, flagID string) (string, error) {

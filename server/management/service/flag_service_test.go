@@ -75,29 +75,28 @@ func TestFlagServiceCreate(t *testing.T) {
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetFlag))
 	})
 
-	t.Run("invalid flag name -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, fs.ID, &model.CreateFlagRequest{
-			Name: "", Payload: json.RawMessage(testutil.DefaultFlagPayload),
+	validation := []struct {
+		name       string
+		req        model.CreateFlagRequest
+		wantFields []string
+	}{
+		{"invalid name", model.CreateFlagRequest{Payload: json.RawMessage(testutil.DefaultFlagPayload)},
+			[]string{"name"}},
+		{"payload not JSON", model.CreateFlagRequest{Name: "x", Payload: json.RawMessage(`{not json`)},
+			[]string{"payload"}},
+		{"name, payload and tags at once", model.CreateFlagRequest{Payload: json.RawMessage(
+			`{"defaultRule":{"variation":"on"},"metadata":{"tags":["a,b"]}}`)},
+			[]string{"name", "payload.variations", "payload.metadata.tags"}},
+	}
+	for _, tt := range validation {
+		t.Run(tt.name+" -> validation error", func(t *testing.T) {
+			_, err := svc.Create(ctx, actor.ID, fs.ID, &tt.req)
+			fields := validationFields(t, err)
+			for _, f := range tt.wantFields {
+				assert.Contains(t, fields, f)
+			}
 		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
-
-	t.Run("invalid payload json -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, fs.ID, &model.CreateFlagRequest{
-			Name: "x", Payload: json.RawMessage(`{not json`),
-		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
-
-	t.Run("payload missing variations -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, fs.ID, &model.CreateFlagRequest{
-			Name: "x", Payload: json.RawMessage(`{"defaultRule":{"variation":"on"}}`),
-		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
+	}
 
 	t.Run("missing flagset -> not found", func(t *testing.T) {
 		_, err := svc.Create(ctx, actor.ID, "00000000-0000-0000-0000-000000000000",
@@ -123,24 +122,27 @@ func TestFlagServiceUpdate(t *testing.T) {
 		require.NotNil(t, updated.CurrentVersion)
 		assert.Equal(t, 2, *updated.CurrentVersion)
 		assert.Equal(t, 2, versionRowCount(t, db, flag.ID))
+		stored, err := svc.Get(ctx, flag.ID)
+		require.NoError(t, err)
+		assert.Equal(t, stored.UpdatedAt, updated.UpdatedAt, "the returned flag carries the new updatedAt")
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetFlag))
 	})
 
-	t.Run("changing flag type -> validation error (immutable type)", func(t *testing.T) {
-		_, err := svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{
-			Payload: json.RawMessage(`{"variations":{"a":"x","b":"y"},"defaultRule":{"variation":"a"}}`),
+	updateValidation := []struct {
+		name      string
+		payload   string
+		wantField string
+	}{
+		{"changing flag type (immutable)", `{"variations":{"a":"x","b":"y"},"defaultRule":{"variation":"a"}}`,
+			"payload.variations"},
+		{"payload without default rule", `{"variations":{"on":true}}`, "payload.defaultRule"},
+	}
+	for _, tt := range updateValidation {
+		t.Run(tt.name+" -> validation error", func(t *testing.T) {
+			_, err := svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{Payload: json.RawMessage(tt.payload)})
+			assert.Contains(t, validationFields(t, err), tt.wantField)
 		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
-
-	t.Run("invalid payload -> validation error", func(t *testing.T) {
-		_, err := svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{
-			Payload: json.RawMessage(`{"variations":{"on":true}}`),
-		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
+	}
 
 	t.Run("missing flag -> not found", func(t *testing.T) {
 		_, err := svc.Update(ctx, actor.ID, "00000000-0000-0000-0000-000000000000",
@@ -273,8 +275,11 @@ func TestFlagServiceSaveIsAtomic(t *testing.T) {
 
 	_, err = svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{Payload: tagged})
 	require.ErrorContains(t, err, "audit down")
+	require.ErrorContains(t, svc.SetDisabled(ctx, actor.ID, flag.ID, true), "audit down")
+	require.ErrorContains(t, svc.Delete(ctx, actor.ID, flag.ID), "audit down")
 	got, err := svc.Get(ctx, flag.ID)
-	require.NoError(t, err)
+	require.NoError(t, err, "the delete was rolled back")
+	assert.False(t, got.Disabled, "the disable was rolled back")
 	assert.Equal(t, 1, *got.CurrentVersion, "current pointer unchanged")
 	assert.Equal(t, 1, versionRowCount(t, db, flag.ID))
 	assert.Empty(t, tagRowsFor(t, db, flag.ID))
@@ -365,6 +370,8 @@ func TestFlagServiceListAndFlagsetID(t *testing.T) {
 		got, err := svc.FlagsetID(ctx, f1.ID)
 		require.NoError(t, err)
 		assert.Equal(t, fs.ID, got)
+		_, err = svc.FlagsetID(ctx, "00000000-0000-0000-0000-000000000000")
+		assert.ErrorIs(t, err, service.ErrNotFound)
 	})
 }
 

@@ -9,6 +9,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// FlagService writes flags. Unlike the team, company and flagset services,
+// every flag write is audited inside its transaction: a flag change without
+// its audit entry is rolled back (flags are what operators need to trace).
 type FlagService struct {
 	db       *repository.DB
 	flags    *repository.FlagRepo
@@ -31,11 +34,9 @@ func NewFlagService(
 func (s *FlagService) Create(
 	ctx context.Context, actorID, flagsetID string, req *model.CreateFlagRequest,
 ) (*model.Flag, error) {
-	if errs := model.ValidateFlagName(req.Name); len(errs) > 0 {
-		return nil, errs
-	}
-	payload, err := preparePayload(req.Payload)
-	if err != nil {
+	payload, errs := preparePayload(req.Payload)
+	errs = append(model.ValidateFlagName(req.Name), errs...)
+	if err := errs.Err(); err != nil {
 		return nil, err
 	}
 	fs, err := s.liveFlagset(ctx, flagsetID)
@@ -73,13 +74,14 @@ func (s *FlagService) saveVersion(
 	if err != nil {
 		return err
 	}
-	if err := s.flags.UpdateCurrentVersion(ctx, tx, f.ID, v.ID); err != nil {
+	updatedAt, err := s.flags.UpdateCurrentVersion(ctx, tx, f.ID, v.ID)
+	if err != nil {
 		return err
 	}
 	if err := s.flags.ReplaceFlagTags(ctx, tx, f.ID, model.FlagTagsFromPayload(payload)); err != nil {
 		return err
 	}
-	f.CurrentVersionID, f.CurrentVersion, f.Payload = &v.ID, &v.VersionNumber, v.Payload
+	f.CurrentVersionID, f.CurrentVersion, f.Payload, f.UpdatedAt = &v.ID, &v.VersionNumber, v.Payload, updatedAt
 	return nil
 }
 
@@ -97,16 +99,15 @@ func (s *FlagService) liveFlagset(ctx context.Context, id string) (*model.Flagse
 // metadata.flagType auto-managed so the exported config carries the flag's
 // OpenFeature type, and metadata.tags normalized so the stored config, the
 // flag_tags mirror, and the list projection all agree.
-func preparePayload(raw json.RawMessage) (json.RawMessage, error) {
+//
+// It returns every payload and tag problem at once.
+func preparePayload(raw json.RawMessage) (json.RawMessage, model.ValidationErrors) {
 	invalid := model.ValidationErrors{{Field: "payload", Message: "invalid payload JSON"}}
 	dto, err := model.ParseFlagPayload(raw)
 	if err != nil {
 		return nil, invalid
 	}
-	if errs := model.ValidateFlagPayload(dto); len(errs) > 0 {
-		return nil, errs
-	}
-	if errs := model.ValidateFlagTags(raw); len(errs) > 0 {
+	if errs := append(model.ValidateFlagPayload(dto), model.ValidateFlagTags(raw)...); len(errs) > 0 {
 		return nil, errs
 	}
 	payload, err := model.SetFlagTypeMetadata(raw)
@@ -167,8 +168,8 @@ func (s *FlagService) ListTeamTags(ctx context.Context, teamID string) ([]string
 func (s *FlagService) Update(
 	ctx context.Context, actorID, id string, req *model.UpdateFlagRequest,
 ) (*model.Flag, error) {
-	payload, err := preparePayload(req.Payload)
-	if err != nil {
+	payload, errs := preparePayload(req.Payload)
+	if err := errs.Err(); err != nil {
 		return nil, err
 	}
 	// The team for the audit entry, read before the transaction so it never
@@ -218,41 +219,65 @@ type flagState struct {
 	Disabled bool `json:"disabled"`
 }
 
+// SetDisabled turns the flag on or off. Like Update, it reads and locks the
+// flag inside the transaction, so the audit entry's before is the state it
+// actually changed.
 func (s *FlagService) SetDisabled(ctx context.Context, actorID, id string, disabled bool) error {
-	before, err := s.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if err := s.flags.SetDisabled(ctx, id, disabled); err != nil {
-		return writeError(err)
-	}
-	_ = s.audit.Record(ctx, nil, repository.AuditInput{
-		ActorUserID: &actorID, TeamID: teamIDOf(ctx, s.flagsets, before.FlagsetID),
-		FlagsetID: &before.FlagsetID, FlagID: &id,
-		Action: model.AuditActionUpdate, TargetType: model.AuditTargetFlag, TargetID: id,
-		Before: flagState{before.Disabled}, After: flagState{disabled},
+	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error) {
+		if err := s.flags.SetDisabled(ctx, tx, id, disabled); err != nil {
+			return repository.AuditInput{}, err
+		}
+		return repository.AuditInput{
+			Action: model.AuditActionUpdate, Before: flagState{before.Disabled}, After: flagState{disabled},
+		}, nil
 	})
-	return nil
 }
 
+// Delete soft-deletes the flag and records the state it deleted.
 func (s *FlagService) Delete(ctx context.Context, actorID, id string) error {
-	before, err := s.Get(ctx, id)
+	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error) {
+		if err := s.flags.SoftDelete(ctx, tx, id); err != nil {
+			return repository.AuditInput{}, err
+		}
+		return repository.AuditInput{Action: model.AuditActionDelete, Before: before}, nil
+	})
+}
+
+// lockedWrite runs write on the live flag, read and locked inside a
+// transaction, and records the audit entry write returns in the same
+// transaction (actor, team, flagset, flag and target are filled in).
+func (s *FlagService) lockedWrite(
+	ctx context.Context, actorID, id string, write func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error),
+) error {
+	// The team is read before the transaction, so it never waits for a
+	// second pool connection while holding one.
+	current, err := s.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if err := s.flags.SoftDelete(ctx, id); err != nil {
-		return writeError(err)
-	}
-	_ = s.audit.Record(ctx, nil, repository.AuditInput{
-		ActorUserID: &actorID, TeamID: teamIDOf(ctx, s.flagsets, before.FlagsetID),
-		FlagsetID: &before.FlagsetID, FlagID: &id,
-		Action: model.AuditActionDelete, TargetType: model.AuditTargetFlag, TargetID: id, Before: before,
+	teamID := teamIDOf(ctx, s.flagsets, current.FlagsetID)
+	err = pgx.BeginFunc(ctx, s.db.Pool, func(tx pgx.Tx) error {
+		before, err := s.flags.GetForUpdate(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if before == nil {
+			return ErrNotFound
+		}
+		in, err := write(tx, before)
+		if err != nil {
+			return err
+		}
+		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, teamID, &before.FlagsetID, &id
+		in.TargetType, in.TargetID = model.AuditTargetFlag, id
+		return s.audit.Record(ctx, tx, in)
 	})
-	return nil
+	return writeError(err)
 }
 
 func (s *FlagService) FlagsetID(ctx context.Context, flagID string) (string, error) {
-	return s.flags.GetFlagsetID(ctx, flagID)
+	fsID, err := s.flags.GetFlagsetID(ctx, flagID)
+	return fsID, writeError(err)
 }
 
 // Evaluate test-evaluates a flag against the supplied evaluation context, running
