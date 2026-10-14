@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
@@ -13,12 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// auditCount returns the number of audit_log rows matching the given action.
-func auditCount(t *testing.T, db *repository.DB, action string) int {
+// auditCount returns the number of audit_log rows with the given action and
+// target type.
+func auditCount(t *testing.T, db *repository.DB, action model.AuditAction, target model.AuditTargetType) int {
 	t.Helper()
 	var n int
 	err := db.Pool.QueryRow(context.Background(),
-		`SELECT COUNT(*) FROM audit_log WHERE action = $1`, action).Scan(&n)
+		`SELECT COUNT(*) FROM audit_log WHERE action = $1 AND target_type = $2`, action, target).Scan(&n)
 	require.NoError(t, err)
 	return n
 }
@@ -52,8 +54,16 @@ func TestTeamServiceCreate(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, model.RoleAdmin, role)
 
-		assert.Equal(t, 1, auditCount(t, db, "team.create"))
-		assert.Equal(t, 1, auditCount(t, db, "team.member.add"))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetTeam))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetTeamMember))
+	})
+
+	t.Run("duplicate name -> conflict, no team left behind", func(t *testing.T) {
+		_, err := svc.Create(ctx, actor.ID, company.ID, &model.CreateTeamRequest{
+			Name: "Platform", AdminEmail: "admin@acme.com",
+		})
+		assert.ErrorIs(t, err, service.ErrConflict)
+		assert.ErrorIs(t, err, repository.ErrTeamNameTaken)
 	})
 
 	t.Run("missing name -> validation error", func(t *testing.T) {
@@ -105,7 +115,7 @@ func TestTeamServiceUpdateDelete(t *testing.T) {
 		updated, err := svc.Update(ctx, actor.ID, team.ID, &model.UpdateTeamRequest{Name: new("Core")})
 		require.NoError(t, err)
 		assert.Equal(t, "Core", updated.Name)
-		assert.Equal(t, 1, auditCount(t, db, "team.update"))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetTeam))
 	})
 
 	t.Run("update missing -> not found", func(t *testing.T) {
@@ -126,16 +136,15 @@ func TestTeamServiceUpdateDelete(t *testing.T) {
 
 	t.Run("delete happy path records audit and removes the team", func(t *testing.T) {
 		require.NoError(t, svc.Delete(ctx, actor.ID, team.ID))
-		// Delete records the audit event before removing the team, so the
-		// team.delete event persists (team_id nulled by the cascade, row survives).
-		assert.Equal(t, 1, auditCount(t, db, "team.delete"))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionDelete, model.AuditTargetTeam))
 		got, err := svc.Get(ctx, team.ID)
 		require.NoError(t, err)
 		assert.Nil(t, got)
 	})
 
-	t.Run("delete missing -> not found", func(t *testing.T) {
+	t.Run("delete missing -> not found, no audit", func(t *testing.T) {
 		assert.ErrorIs(t, svc.Delete(ctx, actor.ID, team.ID), service.ErrNotFound)
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionDelete, model.AuditTargetTeam))
 	})
 }
 
@@ -144,92 +153,138 @@ func TestTeamServiceMembers(t *testing.T) {
 	svc := newTeamService(db)
 	ctx := t.Context()
 	company := testutil.SeedCompany(t, db, "Acme")
-	team := testutil.SeedTeam(t, db, company.ID, "Platform")
 	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
+	// Each subtest gets its own team and company member, so it runs alone.
+	seed := func(t *testing.T) (*model.Team, *model.User) {
+		t.Helper()
+		team := testutil.SeedTeam(t, db, company.ID, t.Name())
+		user := testutil.SeedUser(t, db, strings.ReplaceAll(t.Name(), "/", "-")+"@acme.com", "U", false)
+		require.NoError(t, repository.NewCompanyRepo(db).SetMember(ctx, company.ID, user.ID, model.CompanyRoleMember))
+		return team, user
+	}
+	type counts struct{ add, update, remove int }
+	audited := func(t *testing.T) counts {
+		return counts{
+			add:    auditCount(t, db, model.AuditActionCreate, model.AuditTargetTeamMember),
+			update: auditCount(t, db, model.AuditActionUpdate, model.AuditTargetTeamMember),
+			remove: auditCount(t, db, model.AuditActionDelete, model.AuditTargetTeamMember),
+		}
+	}
 
-	user := testutil.SeedUser(t, db, "u@acme.com", "U", false)
-	require.NoError(t, repository.NewCompanyRepo(db).SetMember(ctx, company.ID, user.ID, model.CompanyRoleMember))
-
-	t.Run("add member happy path with audit", func(t *testing.T) {
+	t.Run("add member is audited as an add", func(t *testing.T) {
+		team, user := seed(t)
+		before := audited(t)
 		m, added, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
-			Email: "u@acme.com", Role: model.RoleEditor,
+			Email: user.Email, Role: model.RoleEditor,
 		})
 		require.NoError(t, err)
 		assert.True(t, added)
 		assert.Equal(t, user.ID, m.UserID)
 		assert.Equal(t, model.RoleEditor, m.Role)
-		assert.Equal(t, 1, auditCount(t, db, "team.member.add"))
-	})
-
-	t.Run("re-add existing member reports not added", func(t *testing.T) {
-		_, added, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
-			Email: "u@acme.com", Role: model.RoleEditor,
-		})
-		require.NoError(t, err)
-		assert.False(t, added)
-		assert.Equal(t, 1, auditCount(t, db, "team.member.add"), "a re-add is audited as a role update")
-		assert.Equal(t, 1, auditCount(t, db, "team.member.update"))
-	})
-
-	t.Run("add member invalid role -> validation error", func(t *testing.T) {
-		_, _, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
-			Email: "u@acme.com", Role: model.Role("bogus"),
-		})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
-
-	t.Run("add unknown user -> not found", func(t *testing.T) {
-		_, _, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
-			Email: "nobody@acme.com", Role: model.RoleViewer,
-		})
-		assert.ErrorIs(t, err, service.ErrNotFound)
-	})
-
-	t.Run("add member to missing team -> not found", func(t *testing.T) {
-		_, _, err := svc.AddMember(ctx, actor.ID, "00000000-0000-0000-0000-000000000000",
-			&model.AddMemberRequest{Email: "u@acme.com", Role: model.RoleViewer})
-		assert.ErrorIs(t, err, service.ErrNotFound)
-	})
-
-	t.Run("add user not in company -> not found", func(t *testing.T) {
-		outsider := testutil.SeedUser(t, db, "out@x.com", "Out", false)
-		_ = outsider
-		_, _, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
-			Email: "out@x.com", Role: model.RoleViewer,
-		})
-		assert.ErrorIs(t, err, service.ErrNotFound)
-	})
-
-	t.Run("list members", func(t *testing.T) {
+		assert.Equal(t, counts{before.add + 1, before.update, before.remove}, audited(t))
 		members, err := svc.ListMembers(ctx, team.ID)
 		require.NoError(t, err)
 		require.Len(t, members, 1)
-		assert.Equal(t, "u@acme.com", members[0].Email)
+		assert.Equal(t, user.Email, members[0].Email)
 	})
 
-	t.Run("update member role happy path", func(t *testing.T) {
-		err := svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, model.RoleAdmin)
+	t.Run("re-add existing member is audited as a role update", func(t *testing.T) {
+		team, user := seed(t)
+		testutil.AddTeamMember(t, db, team.ID, user.ID, model.RoleViewer)
+		before := audited(t)
+		_, added, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
+			Email: user.Email, Role: model.RoleEditor,
+		})
 		require.NoError(t, err)
-		assert.Equal(t, 2, auditCount(t, db, "team.member.update"))
+		assert.False(t, added)
+		assert.Equal(t, counts{before.add, before.update + 1, before.remove}, audited(t))
 	})
 
-	t.Run("update member invalid role -> validation error", func(t *testing.T) {
-		err := svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, model.Role("bogus"))
+	t.Run("concurrent adds report one addition", func(t *testing.T) {
+		team, user := seed(t)
+		const n = 5
+		results := make(chan bool, n)
+		var wg sync.WaitGroup
+		for range n {
+			wg.Go(func() {
+				_, added, err := svc.AddMember(ctx, actor.ID, team.ID, &model.AddMemberRequest{
+					Email: user.Email, Role: model.RoleEditor,
+				})
+				assert.NoError(t, err)
+				results <- added
+			})
+		}
+		wg.Wait()
+		close(results)
+		var adds int
+		for added := range results {
+			if added {
+				adds++
+			}
+		}
+		assert.Equal(t, 1, adds)
+	})
+
+	errTests := []struct {
+		name    string
+		teamID  string // "" means the subtest's own team
+		email   string // "" means the subtest's own user
+		role    model.Role
+		wantErr error
+	}{
+		{name: "invalid role", role: "bogus", wantErr: model.ValidationErrors{}},
+		{name: "unknown user", email: "nobody@acme.com", role: model.RoleViewer, wantErr: service.ErrNotFound},
+		{name: "missing team", teamID: "00000000-0000-0000-0000-000000000000", role: model.RoleViewer,
+			wantErr: service.ErrNotFound},
+		{name: "user not in company", email: "out@x.com", role: model.RoleViewer, wantErr: service.ErrNotFound},
+	}
+	testutil.SeedUser(t, db, "out@x.com", "Out", false)
+	for _, tt := range errTests {
+		t.Run("add: "+tt.name, func(t *testing.T) {
+			team, user := seed(t)
+			teamID, email := team.ID, user.Email
+			if tt.teamID != "" {
+				teamID = tt.teamID
+			}
+			if tt.email != "" {
+				email = tt.email
+			}
+			_, _, err := svc.AddMember(ctx, actor.ID, teamID, &model.AddMemberRequest{Email: email, Role: tt.role})
+			if _, ok := tt.wantErr.(model.ValidationErrors); ok {
+				var ve model.ValidationErrors
+				assert.ErrorAs(t, err, &ve)
+				return
+			}
+			assert.ErrorIs(t, err, tt.wantErr)
+		})
+	}
+
+	t.Run("update member role", func(t *testing.T) {
+		team, user := seed(t)
+		testutil.AddTeamMember(t, db, team.ID, user.ID, model.RoleViewer)
+		before := audited(t)
+		require.NoError(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, model.RoleAdmin))
+		assert.Equal(t, counts{before.add, before.update + 1, before.remove}, audited(t))
+		role, err := svc.Role(ctx, team.ID, user.ID)
+		require.NoError(t, err)
+		assert.Equal(t, model.RoleAdmin, role)
+
 		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
+		assert.ErrorAs(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, "bogus"), &ve)
 	})
 
 	t.Run("update role of a non-member -> not found", func(t *testing.T) {
-		stranger := testutil.SeedUser(t, db, "stranger-upd@acme.com", "S", false)
-		err := svc.UpdateMember(ctx, actor.ID, team.ID, stranger.ID, model.RoleAdmin)
-		assert.ErrorIs(t, err, service.ErrNotFound)
+		team, user := seed(t)
+		assert.ErrorIs(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, model.RoleAdmin), service.ErrNotFound)
 	})
 
-	t.Run("remove member happy path", func(t *testing.T) {
-		err := svc.RemoveMember(ctx, actor.ID, team.ID, user.ID)
-		require.NoError(t, err)
-		assert.Equal(t, 1, auditCount(t, db, "team.member.remove"))
+	t.Run("remove member", func(t *testing.T) {
+		team, user := seed(t)
+		testutil.AddTeamMember(t, db, team.ID, user.ID, model.RoleViewer)
+		before := audited(t)
+		require.NoError(t, svc.RemoveMember(ctx, actor.ID, team.ID, user.ID))
+		assert.Equal(t, counts{before.add, before.update, before.remove + 1}, audited(t))
+		assert.ErrorIs(t, svc.RemoveMember(ctx, actor.ID, team.ID, user.ID), service.ErrNotFound)
 	})
 }
 
@@ -309,7 +364,10 @@ func TestTeamServiceRoleInheritance(t *testing.T) {
 
 	t.Run("explicit role outside the team's company grants nothing", func(t *testing.T) {
 		outsider := testutil.SeedUser(t, db, "out@x.com", "Out", false)
-		testutil.AddTeamMember(t, db, team.ID, outsider.ID, model.RoleEditor)
+		// SetMember refuses outsiders, so plant the stale row directly.
+		_, err := db.Pool.Exec(ctx, `INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, 'editor')`,
+			team.ID, outsider.ID)
+		require.NoError(t, err)
 		role, err := svc.Role(ctx, team.ID, outsider.ID)
 		require.NoError(t, err)
 		assert.Equal(t, model.Role(""), role)
@@ -372,4 +430,26 @@ func TestTeamServiceListAndMemberships(t *testing.T) {
 		require.Len(t, ms, 1)
 		assert.Equal(t, teamA.ID, ms[0].TeamID)
 	})
+}
+
+func TestTeamServiceQueryErrors(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	svc := newTeamService(db)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	id := "00000000-0000-0000-0000-000000000000"
+
+	_, err := svc.Create(ctx, id, id, &model.CreateTeamRequest{Name: "x", AdminEmail: "a@x.com"})
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = svc.Update(ctx, id, id, &model.UpdateTeamRequest{})
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, svc.Delete(ctx, id, id), context.Canceled)
+	_, err = svc.AddableMembers(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, _, err = svc.AddMember(ctx, id, id, &model.AddMemberRequest{Email: "a@x.com", Role: model.RoleViewer})
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, svc.UpdateMember(ctx, id, id, id, model.RoleViewer), context.Canceled)
+	assert.ErrorIs(t, svc.RemoveMember(ctx, id, id, id), context.Canceled)
+	_, err = svc.Role(ctx, id, id)
+	assert.ErrorIs(t, err, context.Canceled)
 }

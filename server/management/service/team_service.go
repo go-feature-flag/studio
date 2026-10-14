@@ -13,7 +13,14 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	ErrNotFound  = errors.New("not found")
 	ErrConflict  = errors.New("conflict")
+
+	errInvalidRole = model.ValidationErrors{{Field: "role", Message: "invalid role"}}
 )
+
+// memberRole is the audit payload of a team member role change.
+type memberRole struct {
+	Role model.Role `json:"role"`
+}
 
 type TeamService struct {
 	teams     *repository.TeamRepo
@@ -22,11 +29,16 @@ type TeamService struct {
 	audit     *repository.AuditRepo
 }
 
-func NewTeamService(teams *repository.TeamRepo, users *repository.UserRepo, companies *repository.CompanyRepo, audit *repository.AuditRepo) *TeamService {
+func NewTeamService(
+	teams *repository.TeamRepo, users *repository.UserRepo, companies *repository.CompanyRepo,
+	audit *repository.AuditRepo,
+) *TeamService {
 	return &TeamService{teams: teams, users: users, companies: companies, audit: audit}
 }
 
-func (s *TeamService) Create(ctx context.Context, actorID, companyID string, req *model.CreateTeamRequest) (*model.Team, error) {
+func (s *TeamService) Create(
+	ctx context.Context, actorID, companyID string, req *model.CreateTeamRequest,
+) (*model.Team, error) {
 	if err := validateName(&req.Name); err != nil {
 		return nil, err
 	}
@@ -47,23 +59,35 @@ func (s *TeamService) Create(ctx context.Context, actorID, companyID string, req
 	if admin == nil || admin.CompanyID == nil || *admin.CompanyID != companyID {
 		return nil, fmt.Errorf("%w: user with email %s not found", ErrNotFound, req.AdminEmail)
 	}
-	t, err := s.teams.Create(ctx, companyID, req.Name, req.Description)
+	t, err := s.teams.CreateWithAdmin(ctx, companyID, req.Name, req.Description, admin.ID)
 	if err != nil {
-		return nil, err
-	}
-	if err := s.teams.AddMember(ctx, t.ID, admin.ID, model.RoleAdmin); err != nil {
-		return nil, err
+		return nil, teamWriteError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID, TeamID: &t.ID,
-		Action: "team.create", TargetType: "team", TargetID: t.ID, After: t,
+		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeam, TargetID: t.ID, After: t,
 	})
-	m := &model.TeamMember{ID: admin.ID, TeamID: t.ID, UserID: admin.ID, Email: admin.Email, Name: admin.Name, Role: model.RoleAdmin}
+	m := &model.TeamMember{
+		ID: admin.ID, TeamID: t.ID, UserID: admin.ID, Email: admin.Email, Name: admin.Name, Role: model.RoleAdmin,
+	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID, TeamID: &t.ID,
-		Action: "team.member.add", TargetType: "user", TargetID: admin.ID, After: m,
+		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeamMember, TargetID: admin.ID, After: m,
 	})
 	return t, nil
+}
+
+// teamWriteError maps repository errors of a team write to service errors.
+// The admin leaving the company between the check and the write reads as the
+// admin not being found, like the check itself.
+func teamWriteError(err error) error {
+	switch {
+	case errors.Is(err, repository.ErrNotFound), errors.Is(err, repository.ErrConflictOrNotFound):
+		return ErrNotFound
+	case errors.Is(err, repository.ErrTeamNameTaken):
+		return fmt.Errorf("%w: %w", ErrConflict, err)
+	}
+	return err
 }
 
 func (s *TeamService) List(ctx context.Context, userID string, superAdmin bool) ([]model.Team, error) {
@@ -78,7 +102,9 @@ func (s *TeamService) Get(ctx context.Context, id string) (*model.Team, error) {
 	return s.teams.GetByID(ctx, id)
 }
 
-func (s *TeamService) Update(ctx context.Context, actorID, id string, req *model.UpdateTeamRequest) (*model.Team, error) {
+func (s *TeamService) Update(
+	ctx context.Context, actorID, id string, req *model.UpdateTeamRequest,
+) (*model.Team, error) {
 	before, err := s.teams.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -93,11 +119,11 @@ func (s *TeamService) Update(ctx context.Context, actorID, id string, req *model
 	}
 	t, err := s.teams.Update(ctx, id, req.Name, req.Description)
 	if err != nil {
-		return nil, err
+		return nil, teamWriteError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &t.CompanyID, TeamID: &t.ID,
-		Action: "team.update", TargetType: "team", TargetID: t.ID, Before: before, After: t,
+		Action: model.AuditActionUpdate, TargetType: model.AuditTargetTeam, TargetID: t.ID, Before: before, After: t,
 	})
 	return t, nil
 }
@@ -110,20 +136,18 @@ func (s *TeamService) Delete(ctx context.Context, actorID, id string) error {
 	if before == nil {
 		return ErrNotFound
 	}
-	// Record the audit event *before* deleting: audit_log's team_id is
-	// ON DELETE SET NULL, so an entry written first survives the delete (its
-	// team_id is nulled by the cascade), whereas an insert after the delete
-	// would fail the foreign-key check and be silently lost.
-	_ = s.audit.Record(ctx, nil, repository.AuditInput{
-		ActorUserID: &actorID, CompanyID: &before.CompanyID, TeamID: &id,
-		Action: "team.delete", TargetType: "team", TargetID: id, Before: before,
-	})
 	if err := s.teams.Delete(ctx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return err
 	}
+	// Recorded after the delete so a failed delete leaves no entry. audit_log
+	// has no foreign keys, and CompanyID is passed because the team is gone.
+	_ = s.audit.Record(ctx, nil, repository.AuditInput{
+		ActorUserID: &actorID, CompanyID: &before.CompanyID, TeamID: &id,
+		Action: model.AuditActionDelete, TargetType: model.AuditTargetTeam, TargetID: id, Before: before,
+	})
 	return nil
 }
 
@@ -164,9 +188,11 @@ func (s *TeamService) AddableMembers(ctx context.Context, teamID string) ([]mode
 
 // AddMember adds the user to the team, or sets their role when they are
 // already on it. The bool reports whether the user was newly added.
-func (s *TeamService) AddMember(ctx context.Context, actorID, teamID string, req *model.AddMemberRequest) (*model.TeamMember, bool, error) {
+func (s *TeamService) AddMember(
+	ctx context.Context, actorID, teamID string, req *model.AddMemberRequest,
+) (*model.TeamMember, bool, error) {
 	if !req.Role.IsValid() {
-		return nil, false, model.ValidationErrors{{Field: "role", Message: "invalid role"}}
+		return nil, false, errInvalidRole
 	}
 	u, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
@@ -184,28 +210,31 @@ func (s *TeamService) AddMember(ctx context.Context, actorID, teamID string, req
 	if u == nil || u.CompanyID == nil || *u.CompanyID != team.CompanyID {
 		return nil, false, fmt.Errorf("%w: user with email %s not found", ErrNotFound, req.Email)
 	}
-	prev, err := s.teams.GetRole(ctx, teamID, u.ID)
+	prev, added, err := s.teams.SetMember(ctx, teamID, u.ID, req.Role)
 	if err != nil {
-		return nil, false, err
-	}
-	if err := s.teams.AddMember(ctx, teamID, u.ID, req.Role); err != nil {
+		if errors.Is(err, repository.ErrConflictOrNotFound) {
+			return nil, false, ErrNotFound
+		}
 		return nil, false, err
 	}
 	m := &model.TeamMember{ID: u.ID, TeamID: teamID, UserID: u.ID, Email: u.Email, Name: u.Name, Role: req.Role}
 	in := repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &team.CompanyID, TeamID: &teamID,
-		Action: "team.member.add", TargetType: "user", TargetID: u.ID, After: m,
+		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeamMember, TargetID: u.ID, After: m,
 	}
-	if prev != "" {
-		in.Action, in.Before = "team.member.update", map[string]any{"role": prev}
+	if !added {
+		in.Action = model.AuditActionUpdate
+		if prev != "" {
+			in.Before = memberRole{prev}
+		}
 	}
 	_ = s.audit.Record(ctx, nil, in)
-	return m, prev == "", nil
+	return m, added, nil
 }
 
 func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID string, role model.Role) error {
 	if !role.IsValid() {
-		return model.ValidationErrors{{Field: "role", Message: "invalid role"}}
+		return errInvalidRole
 	}
 	if err := s.teams.UpdateMemberRole(ctx, teamID, userID, role); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -215,8 +244,8 @@ func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID 
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
-		Action: "team.member.update", TargetType: "user", TargetID: userID,
-		After: map[string]any{"role": role},
+		Action: model.AuditActionUpdate, TargetType: model.AuditTargetTeamMember, TargetID: userID,
+		After: memberRole{role},
 	})
 	return nil
 }
@@ -230,7 +259,7 @@ func (s *TeamService) RemoveMember(ctx context.Context, actorID, teamID, userID 
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
-		Action: "team.member.remove", TargetType: "user", TargetID: userID,
+		Action: model.AuditActionDelete, TargetType: model.AuditTargetTeamMember, TargetID: userID,
 	})
 	return nil
 }
@@ -262,7 +291,9 @@ func (s *TeamService) Role(ctx context.Context, teamID, userID string) (model.Ro
 	}
 	inherited := cm.Role.AsTeamRole()
 
-	if explicit.AtLeast(inherited) {
+	// AtLeast("") is false (unknown roles are denied), so check for no
+	// inherited role first.
+	if inherited == "" || explicit.AtLeast(inherited) {
 		return explicit, nil
 	}
 	return inherited, nil

@@ -103,14 +103,20 @@ func TestTeamRepoMembers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, model.Role(""), role)
 
-	// AddMember then read back.
-	require.NoError(t, repo.AddMember(ctx, team.ID, user.ID, model.RoleViewer))
+	// SetMember adds, then read back.
+	prev, added, err := repo.SetMember(ctx, team.ID, user.ID, model.RoleViewer)
+	require.NoError(t, err)
+	assert.True(t, added)
+	assert.Equal(t, model.Role(""), prev)
 	role, err = repo.GetRole(ctx, team.ID, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.RoleViewer, role)
 
-	// AddMember again upserts the role (no duplicate-key error).
-	require.NoError(t, repo.AddMember(ctx, team.ID, user.ID, model.RoleEditor))
+	// SetMember again upserts the role and reports the previous one.
+	prev, added, err = repo.SetMember(ctx, team.ID, user.ID, model.RoleEditor)
+	require.NoError(t, err)
+	assert.False(t, added)
+	assert.Equal(t, model.RoleViewer, prev)
 	role, _ = repo.GetRole(ctx, team.ID, user.ID)
 	assert.Equal(t, model.RoleEditor, role)
 
@@ -132,9 +138,11 @@ func TestTeamRepoMembers(t *testing.T) {
 	assert.ErrorIs(t, repo.UpdateMemberRole(ctx, team.ID, stranger.ID, model.RoleAdmin), repository.ErrNotFound)
 
 	// Only users of the team's company can join it.
-	assert.ErrorIs(t, repo.AddMember(ctx, team.ID, stranger.ID, model.RoleEditor), repository.ErrConflictOrNotFound)
+	_, _, err = repo.SetMember(ctx, team.ID, stranger.ID, model.RoleEditor)
+	assert.ErrorIs(t, err, repository.ErrConflictOrNotFound)
 	missingTeam := "00000000-0000-0000-0000-000000000000"
-	assert.ErrorIs(t, repo.AddMember(ctx, missingTeam, user.ID, model.RoleEditor), repository.ErrConflictOrNotFound)
+	_, _, err = repo.SetMember(ctx, missingTeam, user.ID, model.RoleEditor)
+	assert.ErrorIs(t, err, repository.ErrConflictOrNotFound)
 
 	// A membership row outside the user's company grants no role and isn't listed.
 	_, err = db.Pool.Exec(ctx,
@@ -170,7 +178,10 @@ func TestTeamRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.ListMembers(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.ErrorIs(t, repo.AddMember(ctx, id, id, model.RoleViewer), context.Canceled)
+	_, _, err = repo.SetMember(ctx, id, id, model.RoleViewer)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.CreateWithAdmin(ctx, id, "x", "", id)
+	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.Memberships(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
 }

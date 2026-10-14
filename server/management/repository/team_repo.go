@@ -43,6 +43,31 @@ func (r *TeamRepo) Create(ctx context.Context, companyID, name, description stri
 	return &t, nil
 }
 
+// CreateWithAdmin creates the team and makes adminID its admin in one
+// transaction, so a failed membership write leaves no admin-less team behind.
+// The admin must belong to the company (ErrConflictOrNotFound otherwise).
+func (r *TeamRepo) CreateWithAdmin(
+	ctx context.Context, companyID, name, description, adminID string,
+) (*model.Team, error) {
+	var t model.Team
+	err := pgx.BeginFunc(ctx, r.db.Pool, func(tx pgx.Tx) error {
+		err := scanTeam(tx.QueryRow(ctx,
+			`INSERT INTO teams (company_id, name, description) VALUES ($1, $2, $3)
+			 RETURNING `+teamCols,
+			companyID, name, description,
+		), &t)
+		if err != nil {
+			return mapTeamNameTaken(err)
+		}
+		_, _, err = setTeamMember(ctx, tx, t.ID, adminID, model.RoleAdmin)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (r *TeamRepo) GetByID(ctx context.Context, id string) (*model.Team, error) {
 	var t model.Team
 	err := scanTeam(r.db.Pool.QueryRow(ctx,
@@ -138,24 +163,48 @@ func (r *TeamRepo) ListMembers(ctx context.Context, teamID string) ([]model.Team
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.TeamMember])
 }
 
-// AddMember adds the user to the team, or updates their role if already a
-// member. Fails with ErrConflictOrNotFound unless the team and user exist and
-// the user belongs to the team's company.
-func (r *TeamRepo) AddMember(ctx context.Context, teamID, userID string, role model.Role) error {
-	ct, err := r.db.Pool.Exec(ctx, `
+// SetMember adds the user to the team, or sets their role if already a member.
+// It reports whether the user was newly added and, otherwise, their previous
+// role, both read from the write itself so concurrent calls can't both claim
+// the add. prev is "" when it can't be known (a racing add committed first).
+// Fails with ErrConflictOrNotFound unless the team and user exist and the user
+// belongs to the team's company.
+func (r *TeamRepo) SetMember(
+	ctx context.Context, teamID, userID string, role model.Role,
+) (prev model.Role, added bool, err error) {
+	return setTeamMember(ctx, r.db.Pool, teamID, userID, role)
+}
+
+// queryRower is satisfied by both the pool and a pgx.Tx.
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func setTeamMember(
+	ctx context.Context, q queryRower, teamID, userID string, role model.Role,
+) (model.Role, bool, error) {
+	// xmax = 0 only on a freshly inserted row; the subquery reads the
+	// statement's snapshot, i.e. the role before this upsert.
+	var prev *model.Role
+	var added bool
+	err := q.QueryRow(ctx, `
 		INSERT INTO team_members (team_id, user_id, role)
 		SELECT t.id, u.id, $3
 		FROM teams t JOIN users u ON u.company_id = t.company_id
 		WHERE t.id = $1 AND u.id = $2
-		ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-		teamID, userID, role)
+		ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role
+		RETURNING xmax = 0, (SELECT role FROM team_members WHERE team_id = $1 AND user_id = $2)`,
+		teamID, userID, role).Scan(&added, &prev)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", false, ErrConflictOrNotFound
+		}
+		return "", false, err
 	}
-	if ct.RowsAffected() == 0 {
-		return ErrConflictOrNotFound
+	if prev == nil || added {
+		return "", added, nil
 	}
-	return nil
+	return *prev, false, nil
 }
 
 func (r *TeamRepo) UpdateMemberRole(ctx context.Context, teamID, userID string, role model.Role) error {
