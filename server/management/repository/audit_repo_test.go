@@ -21,6 +21,7 @@ func TestAuditRepoRecordAndList(t *testing.T) {
 	company := testutil.SeedCompany(t, db, "Acme")
 	team := testutil.SeedTeam(t, db, company.ID, "Platform")
 	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", false)
+	require.NoError(t, repository.NewCompanyRepo(db).SetMember(ctx, company.ID, actor.ID, model.CompanyRoleMember))
 
 	// Record (no tx) with structured before/after.
 	require.NoError(t, repo.Record(ctx, nil, repository.AuditInput{
@@ -74,7 +75,7 @@ func TestAuditRepoRecordAndList(t *testing.T) {
 	assert.Equal(t, 1, total)
 	require.Len(t, entries, 1)
 	assert.Equal(t, model.AuditTargetCompany, entries[0].TargetType)
-	testutil.AddTeamMember(t, db, team.ID, actor.ID, model.RoleViewer)
+	require.NoError(t, repository.NewTeamRepo(db).AddMember(ctx, team.ID, actor.ID, model.RoleViewer))
 	_, total, err = repo.List(ctx,
 		model.AuditScope{CompanyID: &company.ID, MemberUserID: &actor.ID}, model.AuditFilters{})
 	require.NoError(t, err)
