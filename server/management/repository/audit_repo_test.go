@@ -27,21 +27,21 @@ func TestAuditRepoRecordAndList(t *testing.T) {
 		ActorUserID: &actor.ID,
 		CompanyID:   &company.ID,
 		TeamID:      &team.ID,
-		Action:      "team.create",
-		TargetType:  "team",
+		Action:      model.AuditActionCreate,
+		TargetType:  model.AuditTargetTeam,
 		TargetID:    team.ID,
 		After:       map[string]any{"name": "Platform"},
 	}))
 	require.NoError(t, repo.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actor.ID,
 		CompanyID:   &company.ID,
-		Action:      "company.update",
-		TargetType:  "company",
+		Action:      model.AuditActionUpdate,
+		TargetType:  model.AuditTargetCompany,
 		TargetID:    company.ID,
 	}))
 
 	// List all for the company.
-	entries, total, err := repo.List(ctx, model.AuditFilters{CompanyID: &company.ID})
+	entries, total, err := repo.List(ctx, model.AuditScope{}, model.AuditFilters{CompanyID: &company.ID})
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	require.Len(t, entries, 2)
@@ -49,30 +49,43 @@ func TestAuditRepoRecordAndList(t *testing.T) {
 	assert.Equal(t, "actor@acme.com", *entries[0].ActorEmail)
 
 	// Filter by action.
-	action := "team.create"
-	entries, total, err = repo.List(ctx, model.AuditFilters{CompanyID: &company.ID, Action: &action})
+	action := model.AuditActionCreate
+	entries, total, err = repo.List(ctx, model.AuditScope{}, model.AuditFilters{CompanyID: &company.ID, Action: &action})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 	require.Len(t, entries, 1)
-	assert.Equal(t, "team.create", entries[0].Action)
+	assert.Equal(t, model.AuditActionCreate, entries[0].Action)
 	assert.JSONEq(t, `{"name":"Platform"}`, string(entries[0].After))
 
 	// Filter by team.
-	_, total, err = repo.List(ctx, model.AuditFilters{TeamID: &team.ID})
+	_, total, err = repo.List(ctx, model.AuditScope{}, model.AuditFilters{TeamID: &team.ID})
 	require.NoError(t, err)
 	assert.Equal(t, 1, total)
 
-	// ScopeCompanyID also matches team-scoped events owned by the company.
-	_, total, err = repo.List(ctx, model.AuditFilters{ScopeCompanyID: &company.ID})
+	// Scope.CompanyID also matches team-scoped events owned by the company.
+	_, total, err = repo.List(ctx, model.AuditScope{CompanyID: &company.ID}, model.AuditFilters{})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+
+	// Scope.MemberUserID hides events of teams the user is not a member of.
+	entries, total, err = repo.List(ctx,
+		model.AuditScope{CompanyID: &company.ID, MemberUserID: &actor.ID}, model.AuditFilters{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, entries, 1)
+	assert.Equal(t, model.AuditTargetCompany, entries[0].TargetType)
+	testutil.AddTeamMember(t, db, team.ID, actor.ID, model.RoleViewer)
+	_, total, err = repo.List(ctx,
+		model.AuditScope{CompanyID: &company.ID, MemberUserID: &actor.ID}, model.AuditFilters{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 
 	// Entries sharing a timestamp page deterministically, newest id first.
 	_, err = db.Pool.Exec(ctx, `UPDATE audit_log SET occurred_at = '2026-01-01T00:00:00Z'`)
 	require.NoError(t, err)
-	page1, _, err := repo.List(ctx, model.AuditFilters{Page: 1, PageSize: 1})
+	page1, _, err := repo.List(ctx, model.AuditScope{}, model.AuditFilters{Page: 1, PageSize: 1})
 	require.NoError(t, err)
-	page2, _, err := repo.List(ctx, model.AuditFilters{Page: 2, PageSize: 1})
+	page2, _, err := repo.List(ctx, model.AuditScope{}, model.AuditFilters{Page: 2, PageSize: 1})
 	require.NoError(t, err)
 	require.Len(t, page1, 1)
 	require.Len(t, page2, 1)
@@ -90,9 +103,9 @@ func TestAuditRepoRecordLogsFailure(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	err := repo.Record(ctx, nil, repository.AuditInput{Action: "team.create", TargetType: "team", TargetID: "t1"})
+	err := repo.Record(ctx, nil, repository.AuditInput{Action: model.AuditActionCreate, TargetType: model.AuditTargetTeam, TargetID: "t1"})
 
 	require.Error(t, err)
 	assert.Contains(t, buf.String(), "audit write failed")
-	assert.Contains(t, buf.String(), "action=team.create")
+	assert.Contains(t, buf.String(), "action=create")
 }

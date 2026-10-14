@@ -20,8 +20,8 @@ type AuditInput struct {
 	TeamID      *string
 	FlagsetID   *string
 	FlagID      *string
-	Action      string
-	TargetType  string
+	Action      model.AuditAction
+	TargetType  model.AuditTargetType
 	TargetID    string
 	Before      any
 	After       any
@@ -35,9 +35,14 @@ func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error 
 
 	// company_id falls back to the team's company so flag/flagset events (which
 	// only pass TeamID) stay tenant-scoped after the team is deleted.
-	q := `INSERT INTO audit_log (actor_user_id, company_id, team_id, flagset_id, flag_id, action, target_type, target_id, before, after, metadata)
-	      VALUES ($1, COALESCE($2::uuid, (SELECT company_id FROM teams WHERE id = $3::uuid)), $3,$4,$5,$6,$7,$8,$9,$10,$11)`
-	args := []any{in.ActorUserID, in.CompanyID, in.TeamID, in.FlagsetID, in.FlagID, in.Action, in.TargetType, in.TargetID, before, after, meta}
+	q := `INSERT INTO audit_log (actor_user_id, company_id, team_id, flagset_id, flag_id,
+	                            action, target_type, target_id, before, after, metadata)
+	      VALUES ($1, COALESCE($2::uuid, (SELECT company_id FROM teams WHERE id = $3::uuid)),
+	              $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+	args := []any{
+		in.ActorUserID, in.CompanyID, in.TeamID, in.FlagsetID, in.FlagID,
+		in.Action, in.TargetType, in.TargetID, before, after, meta,
+	}
 	var err error
 	if tx != nil {
 		_, err = tx.Exec(ctx, q, args...)
@@ -47,7 +52,8 @@ func (r *AuditRepo) Record(ctx context.Context, tx pgx.Tx, in AuditInput) error 
 	// Most callers treat audit as best-effort and drop the error, so log it here
 	// to keep a broken audit pipeline visible.
 	if err != nil {
-		slog.ErrorContext(ctx, "audit write failed", "action", in.Action, "target_type", in.TargetType, "target_id", in.TargetID, "error", err)
+		slog.ErrorContext(ctx, "audit write failed",
+			"action", in.Action, "target_type", in.TargetType, "target_id", in.TargetID, "error", err)
 	}
 	return err
 }
@@ -69,20 +75,23 @@ func marshalAny(v any) any {
 	return b
 }
 
-func (r *AuditRepo) List(ctx context.Context, f model.AuditFilters) ([]model.AuditEntry, int, error) {
-	qb := NewQueryBuilder()
-	if f.ScopeCompanyID != nil {
+func (r *AuditRepo) List(
+	ctx context.Context, scope model.AuditScope, f model.AuditFilters,
+) ([]model.AuditEntry, int, error) {
+	qb := NewQueryBuilder(0)
+	if scope.CompanyID != nil {
 		// Tenant isolation: an entry belongs to a company when its company_id
 		// matches, or when it targets a team owned by that company (flag/flagset
 		// events only carry team_id, not company_id). The single bound argument
 		// is referenced twice via an explicit index.
-		qb.Add("(a.company_id = $%[1]d OR a.team_id IN (SELECT id FROM teams WHERE company_id = $%[1]d))", *f.ScopeCompanyID)
+		qb.Add("(a.company_id = $%[1]d OR a.team_id IN (SELECT id FROM teams WHERE company_id = $%[1]d))", *scope.CompanyID)
 	}
-	if f.ScopeMemberUserID != nil {
+	if scope.MemberUserID != nil {
 		// Team events only for the user's teams; company-level events carry no
 		// team_id. Matching a bare team_id IS NULL would also expose deleted
-		// teams' history, whose team_id is nulled by ON DELETE SET NULL.
-		qb.Add("(a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $%d) OR (a.team_id IS NULL AND a.action LIKE 'company.%%'))", *f.ScopeMemberUserID)
+		// teams' history, so restrict it to company-level targets.
+		qb.Add("a.team_id IN (SELECT team_id FROM team_members WHERE user_id = $%d)"+
+			" OR (a.team_id IS NULL AND a.target_type IN ('company', 'company_member'))", *scope.MemberUserID)
 	}
 	if f.CompanyID != nil {
 		qb.Add("a.company_id = $%d", *f.CompanyID)
@@ -96,8 +105,8 @@ func (r *AuditRepo) List(ctx context.Context, f model.AuditFilters) ([]model.Aud
 	if f.FlagID != nil {
 		qb.Add("a.flag_id = $%d", *f.FlagID)
 	}
-	if f.ActorID != nil {
-		qb.Add("a.actor_user_id = $%d", *f.ActorID)
+	if f.ActorUserID != nil {
+		qb.Add("a.actor_user_id = $%d", *f.ActorUserID)
 	}
 	if f.Action != nil {
 		qb.Add("a.action = $%d", *f.Action)
@@ -108,17 +117,18 @@ func (r *AuditRepo) List(ctx context.Context, f model.AuditFilters) ([]model.Aud
 	if f.To != nil {
 		qb.Add("a.occurred_at <= $%d", *f.To)
 	}
-	where, args := qb.Build()
+	where, countArgs := qb.Build()
 	whereClause := "WHERE 1=1" + where
 
 	var total int
 	if err := r.db.Pool.QueryRow(ctx,
-		"SELECT COUNT(*) FROM audit_log a "+whereClause, args...).Scan(&total); err != nil {
+		"SELECT COUNT(*) FROM audit_log a "+whereClause, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	f.Page, f.PageSize = model.ClampPage(f.Page, f.PageSize)
-	offset := (f.Page - 1) * f.PageSize
+	limit, offset := qb.Arg(f.PageSize), qb.Arg((f.Page-1)*f.PageSize)
+	_, args := qb.Build()
 	listQ := fmt.Sprintf(`
 		SELECT a.id, a.occurred_at, a.actor_user_id, u.email AS actor_email,
 		       a.company_id, a.team_id, a.flagset_id, a.flag_id, a.action, a.target_type, a.target_id,
@@ -127,8 +137,7 @@ func (r *AuditRepo) List(ctx context.Context, f model.AuditFilters) ([]model.Aud
 		LEFT JOIN users u ON u.id = a.actor_user_id
 		%s
 		ORDER BY a.occurred_at DESC, a.id DESC
-		LIMIT $%d OFFSET $%d`, whereClause, len(args)+1, len(args)+2)
-	args = append(args, f.PageSize, offset)
+		LIMIT %s OFFSET %s`, whereClause, limit, offset)
 
 	rows, err := r.db.Pool.Query(ctx, listQ, args...)
 	if err != nil {
