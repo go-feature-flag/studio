@@ -14,16 +14,25 @@ type FlagsetRepo struct{ db *DB }
 
 func NewFlagsetRepo(db *DB) *FlagsetRepo { return &FlagsetRepo{db: db} }
 
-const flagsetCols = `id, team_id, name, description, (SELECT COUNT(*) FROM flagset_api_keys k WHERE k.flagset_id = flagsets.id) AS api_key_count, (SELECT COUNT(*) FROM flags f WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL) AS flag_count, (SELECT COUNT(*) FROM flags f WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL AND f.disabled = FALSE) AS enabled_flag_count, polling_interval_ms, file_format, retrievers, exporters, notifiers, evaluation_context_enrichment, default_testing_evaluation_context, created_at, updated_at`
+const flagsetCols = `id, team_id, name, description,
+	(SELECT COUNT(*) FROM flagset_api_keys k WHERE k.flagset_id = flagsets.id) AS api_key_count,
+	(SELECT COUNT(*) FROM flags f WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL) AS flag_count,
+	(SELECT COUNT(*) FROM flags f
+	 WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL AND f.disabled = FALSE) AS enabled_flag_count,
+	polling_interval_ms, file_format, retrievers, exporters, notifiers,
+	evaluation_context_enrichment, default_testing_evaluation_context, created_at, updated_at`
 
 func scanFlagset(row pgx.Row, fs *model.Flagset) error {
 	return row.Scan(
-		&fs.ID, &fs.TeamID, &fs.Name, &fs.Description, &fs.APIKeyCount, &fs.FlagCount, &fs.EnabledFlagCount, &fs.PollingIntervalMs, &fs.FileFormat,
-		&fs.Retrievers, &fs.Exporters, &fs.Notifiers, &fs.EvaluationContextEnrichment, &fs.DefaultTestingEvaluationContext, &fs.CreatedAt, &fs.UpdatedAt,
+		&fs.ID, &fs.TeamID, &fs.Name, &fs.Description, &fs.APIKeyCount, &fs.FlagCount, &fs.EnabledFlagCount,
+		&fs.PollingIntervalMs, &fs.FileFormat, &fs.Retrievers, &fs.Exporters, &fs.Notifiers,
+		&fs.EvaluationContextEnrichment, &fs.DefaultTestingEvaluationContext, &fs.CreatedAt, &fs.UpdatedAt,
 	)
 }
 
-func (r *FlagsetRepo) Create(ctx context.Context, teamID string, req *model.CreateFlagsetRequest) (*model.Flagset, error) {
+func (r *FlagsetRepo) Create(
+	ctx context.Context, teamID string, req *model.CreateFlagsetRequest,
+) (*model.Flagset, error) {
 	j, err := flagsetJSON(req.Retrievers, req.Exporters, req.Notifiers,
 		req.EvaluationContextEnrichment, req.DefaultTestingEvaluationContext)
 	if err != nil {
@@ -31,7 +40,8 @@ func (r *FlagsetRepo) Create(ctx context.Context, teamID string, req *model.Crea
 	}
 	var fs model.Flagset
 	err = scanFlagset(r.db.Pool.QueryRow(ctx, `
-		INSERT INTO flagsets (team_id, name, description, polling_interval_ms, file_format, retrievers, exporters, notifiers, evaluation_context_enrichment, default_testing_evaluation_context)
+		INSERT INTO flagsets (team_id, name, description, polling_interval_ms, file_format, retrievers, exporters,
+		                      notifiers, evaluation_context_enrichment, default_testing_evaluation_context)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		RETURNING `+flagsetCols,
 		teamID, req.Name, req.Description, req.PollingIntervalMs, req.FileFormat,
@@ -77,17 +87,18 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 		UPDATE flagsets SET
 			name = COALESCE($2, name),
 			description = COALESCE($3, description),
-			polling_interval_ms = COALESCE($4, polling_interval_ms),
-			file_format = COALESCE($5, file_format),
-			retrievers = COALESCE($6, retrievers),
-			exporters = COALESCE($7, exporters),
-			notifiers = COALESCE($8, notifiers),
-			evaluation_context_enrichment = COALESCE($9, evaluation_context_enrichment),
-			default_testing_evaluation_context = COALESCE($10, default_testing_evaluation_context),
+			polling_interval_ms = CASE WHEN $4 THEN $5 ELSE polling_interval_ms END,
+			file_format = CASE WHEN $6 THEN $7 ELSE file_format END,
+			retrievers = COALESCE($8, retrievers),
+			exporters = COALESCE($9, exporters),
+			notifiers = COALESCE($10, notifiers),
+			evaluation_context_enrichment = COALESCE($11, evaluation_context_enrichment),
+			default_testing_evaluation_context = COALESCE($12, default_testing_evaluation_context),
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING `+flagsetCols,
-		id, req.Name, req.Description, req.PollingIntervalMs, req.FileFormat,
+		id, req.Name, req.Description,
+		req.PollingIntervalMs.Set, req.PollingIntervalMs.Value, req.FileFormat.Set, req.FileFormat.Value,
 		j[0], j[1], j[2], j[3], j[4],
 	), &fs)
 	if err != nil {
@@ -104,7 +115,7 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 // NULL, so Create stores NULL and Update leaves the column unchanged.
 func flagsetJSON(raws ...json.RawMessage) ([]any, error) {
 	out := make([]any, len(raws))
-	var errs []error
+	errs := make([]error, 0, len(raws))
 	for i, raw := range raws {
 		var err error
 		out[i], err = marshalAny(raw)
@@ -134,12 +145,12 @@ func (r *FlagsetRepo) SoftDelete(ctx context.Context, id string) error {
 			return ErrNotFound
 		}
 		// Same tag-mirror hygiene as FlagRepo.SoftDelete.
-		if _, err := tx.Exec(ctx,
-			`DELETE FROM flag_tags WHERE flag_id IN (SELECT id FROM flags WHERE flagset_id = $1 AND deleted_at IS NULL)`, id); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM flag_tags
+			WHERE flag_id IN (SELECT id FROM flags WHERE flagset_id = $1 AND deleted_at IS NULL)`, id); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx,
-			`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE flagset_id = $1 AND deleted_at IS NULL`, id); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE flags SET deleted_at = NOW(), updated_at = NOW()
+			WHERE flagset_id = $1 AND deleted_at IS NULL`, id); err != nil {
 			return err
 		}
 		_, err = tx.Exec(ctx, `DELETE FROM flagset_api_keys WHERE flagset_id = $1`, id)
@@ -147,15 +158,24 @@ func (r *FlagsetRepo) SoftDelete(ctx context.Context, id string) error {
 	})
 }
 
-func (r *FlagsetRepo) InsertAPIKey(ctx context.Context, flagsetID, label, apiKey, createdBy string) (*model.FlagsetAPIKey, error) {
+// InsertAPIKey returns ErrNotFound when the flagset is missing or deleted.
+// FOR SHARE makes the insert wait for a concurrent SoftDelete and then see the
+// flagset as deleted; the foreign key alone would let a key slip in after the
+// delete revoked the others.
+func (r *FlagsetRepo) InsertAPIKey(
+	ctx context.Context, flagsetID, label, apiKey, createdBy string,
+) (*model.FlagsetAPIKey, error) {
 	var k model.FlagsetAPIKey
 	err := r.db.Pool.QueryRow(ctx, `
 		INSERT INTO flagset_api_keys (flagset_id, label, api_key, created_by)
-		VALUES ($1,$2,$3,$4)
+		SELECT id, $2, $3, $4 FROM flagsets WHERE id = $1 AND deleted_at IS NULL FOR SHARE
 		RETURNING id, flagset_id, label, api_key, created_by, created_at`,
 		flagsetID, label, apiKey, createdBy,
 	).Scan(&k.ID, &k.FlagsetID, &k.Label, &k.APIKey, &k.CreatedBy, &k.CreatedAt)
 	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &k, nil
@@ -163,7 +183,7 @@ func (r *FlagsetRepo) InsertAPIKey(ctx context.Context, flagsetID, label, apiKey
 
 func (r *FlagsetRepo) ListAPIKeys(ctx context.Context, flagsetID string) ([]model.FlagsetAPIKey, error) {
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT k.id, k.flagset_id, k.label, k.api_key, k.created_by, COALESCE(u.name, '') AS created_by_name, k.created_at
+		SELECT k.id, k.flagset_id, k.label, k.api_key, k.created_by, u.name AS created_by_name, k.created_at
 		FROM flagset_api_keys k
 		LEFT JOIN users u ON u.id = k.created_by
 		WHERE k.flagset_id = $1 ORDER BY k.created_at DESC`, flagsetID)
