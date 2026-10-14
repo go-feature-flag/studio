@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
@@ -14,7 +15,7 @@ var (
 	ErrNotFound  = errors.New("not found")
 	ErrConflict  = errors.New("conflict")
 
-	errInvalidRole = model.ValidationErrors{{Field: "role", Message: "invalid role"}}
+	errInvalidRole = model.ValidationError{Field: "role", Message: "invalid role"}
 )
 
 // memberRole is the audit payload of a team member role change.
@@ -39,14 +40,15 @@ func NewTeamService(
 func (s *TeamService) Create(
 	ctx context.Context, actorID, companyID string, req *model.CreateTeamRequest,
 ) (*model.Team, error) {
-	if err := validateName(&req.Name); err != nil {
-		return nil, err
-	}
+	errs := validateName(&req.Name)
 	if companyID == "" {
-		return nil, model.ValidationErrors{{Field: "companyId", Message: "companyId is required"}}
+		errs = append(errs, model.ValidationError{Field: "companyId", Message: "companyId is required"})
 	}
 	if req.AdminEmail == "" {
-		return nil, model.ValidationErrors{{Field: "adminEmail", Message: "team admin is required"}}
+		errs = append(errs, model.ValidationError{Field: "adminEmail", Message: "team admin is required"})
+	}
+	if err := errs.Err(); err != nil {
+		return nil, err
 	}
 	// Validate the team admin before creating the team so we never leave an
 	// admin-less team behind. The admin must already belong to the company.
@@ -59,7 +61,7 @@ func (s *TeamService) Create(
 	if admin == nil || admin.CompanyID == nil || *admin.CompanyID != companyID {
 		return nil, fmt.Errorf("%w: user with email %s not found", ErrNotFound, req.AdminEmail)
 	}
-	t, err := s.teams.CreateWithAdmin(ctx, companyID, req.Name, req.Description, admin.ID)
+	t, m, err := s.teams.CreateWithAdmin(ctx, companyID, req.Name, req.Description, admin.ID)
 	if err != nil {
 		return nil, teamWriteError(err)
 	}
@@ -67,9 +69,6 @@ func (s *TeamService) Create(
 		ActorUserID: &actorID, CompanyID: &companyID, TeamID: &t.ID,
 		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeam, TargetID: t.ID, After: t,
 	})
-	m := &model.TeamMember{
-		ID: admin.ID, TeamID: t.ID, UserID: admin.ID, Email: admin.Email, Name: admin.Name, Role: model.RoleAdmin,
-	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID, TeamID: &t.ID,
 		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeamMember, TargetID: admin.ID, After: m,
@@ -99,7 +98,11 @@ func (s *TeamService) ListByCompany(ctx context.Context, companyID string) ([]mo
 }
 
 func (s *TeamService) Get(ctx context.Context, id string) (*model.Team, error) {
-	return s.teams.GetByID(ctx, id)
+	t, err := s.teams.GetByID(ctx, id)
+	if err == nil && t == nil {
+		return nil, ErrNotFound
+	}
+	return t, err
 }
 
 func (s *TeamService) Update(
@@ -191,8 +194,15 @@ func (s *TeamService) AddableMembers(ctx context.Context, teamID string) ([]mode
 func (s *TeamService) AddMember(
 	ctx context.Context, actorID, teamID string, req *model.AddMemberRequest,
 ) (*model.TeamMember, bool, error) {
+	var errs model.ValidationErrors
+	if strings.TrimSpace(req.Email) == "" {
+		errs = append(errs, model.ValidationError{Field: "email", Message: "email is required"})
+	}
 	if !req.Role.IsValid() {
-		return nil, false, errInvalidRole
+		errs = append(errs, errInvalidRole)
+	}
+	if err := errs.Err(); err != nil {
+		return nil, false, err
 	}
 	u, err := s.users.GetByEmail(ctx, req.Email)
 	if err != nil {
@@ -210,23 +220,19 @@ func (s *TeamService) AddMember(
 	if u == nil || u.CompanyID == nil || *u.CompanyID != team.CompanyID {
 		return nil, false, fmt.Errorf("%w: user with email %s not found", ErrNotFound, req.Email)
 	}
-	prev, added, err := s.teams.SetMember(ctx, teamID, u.ID, req.Role)
+	m, prev, err := s.teams.SetMember(ctx, teamID, u.ID, req.Role)
 	if err != nil {
-		if errors.Is(err, repository.ErrConflictOrNotFound) {
-			return nil, false, ErrNotFound
-		}
-		return nil, false, err
+		return nil, false, teamWriteError(err)
 	}
-	m := &model.TeamMember{ID: u.ID, TeamID: teamID, UserID: u.ID, Email: u.Email, Name: u.Name, Role: req.Role}
+	// An add records the member; a role change records the roles on both
+	// sides, the same shape as UpdateMember.
 	in := repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &team.CompanyID, TeamID: &teamID,
 		Action: model.AuditActionCreate, TargetType: model.AuditTargetTeamMember, TargetID: u.ID, After: m,
 	}
+	added := prev == ""
 	if !added {
-		in.Action = model.AuditActionUpdate
-		if prev != "" {
-			in.Before = memberRole{prev}
-		}
+		in.Action, in.Before, in.After = model.AuditActionUpdate, memberRole{prev}, memberRole{req.Role}
 	}
 	_ = s.audit.Record(ctx, nil, in)
 	return m, added, nil
@@ -234,32 +240,29 @@ func (s *TeamService) AddMember(
 
 func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID string, role model.Role) error {
 	if !role.IsValid() {
-		return errInvalidRole
+		return model.ValidationErrors{errInvalidRole}
 	}
-	if err := s.teams.UpdateMemberRole(ctx, teamID, userID, role); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrNotFound
-		}
-		return err
+	prev, err := s.teams.UpdateMemberRole(ctx, teamID, userID, role)
+	if err != nil {
+		return teamWriteError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
 		Action: model.AuditActionUpdate, TargetType: model.AuditTargetTeamMember, TargetID: userID,
-		After: memberRole{role},
+		Before: memberRole{prev}, After: memberRole{role},
 	})
 	return nil
 }
 
 func (s *TeamService) RemoveMember(ctx context.Context, actorID, teamID, userID string) error {
-	if err := s.teams.RemoveMember(ctx, teamID, userID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return ErrNotFound
-		}
-		return err
+	prev, err := s.teams.RemoveMember(ctx, teamID, userID)
+	if err != nil {
+		return teamWriteError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,
 		Action: model.AuditActionDelete, TargetType: model.AuditTargetTeamMember, TargetID: userID,
+		Before: memberRole{prev},
 	})
 	return nil
 }

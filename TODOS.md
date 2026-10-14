@@ -57,3 +57,10 @@ Left open after the review of the flag and flag version repositories (#24).
 
 - [ ] **Clamp version paging.** `FlagVersionRepo.ListByFlag` takes a raw limit/offset, unlike the other lists that go through `model.ClampPage`: offset -1 returns a raw `2201X` pg error and the limit has no cap. Take page/pageSize and clamp, or clamp in the version service.
 - [ ] **Key flag owners by user id.** `ListByTeam`'s `Owner` filter and `ListTeamOwners` use `users.name`, which isn't unique and defaults to `''`: two users named "Alice" collapse into one owner, and a user with an empty name shows up as owner `""` instead of unassigned. Filter on `fv.created_by` and return `{id, name}` pairs.
+
+## Services
+
+Left open after the review of the team service (#26).
+
+- [ ] **Keep a team admin.** `TeamService.Create` refuses an admin-less team, but `RemoveMember` and `UpdateMember` happily remove or demote the last admin. Company admins still inherit admin, so nobody is locked out; either guard the last explicit admin or drop the "never admin-less" wording.
+- [ ] **Skip audit entries for no-op writes.** Re-adding a member with the same role writes an update entry where before equals after, and `TeamService.Update` with an empty body bumps `updated_at` and writes an entry.

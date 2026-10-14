@@ -104,18 +104,19 @@ func TestTeamRepoMembers(t *testing.T) {
 	assert.Equal(t, model.Role(""), role)
 
 	// SetMember adds, then read back.
-	prev, added, err := repo.SetMember(ctx, team.ID, user.ID, model.RoleViewer)
+	m, prev, err := repo.SetMember(ctx, team.ID, user.ID, model.RoleViewer)
 	require.NoError(t, err)
-	assert.True(t, added)
-	assert.Equal(t, model.Role(""), prev)
+	assert.Equal(t, model.Role(""), prev, "newly added")
+	assert.Equal(t, "u@acme.com", m.Email)
+	assert.Equal(t, model.RoleViewer, m.Role)
+	assert.False(t, m.CreatedAt.IsZero())
 	role, err = repo.GetRole(ctx, team.ID, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, model.RoleViewer, role)
 
 	// SetMember again upserts the role and reports the previous one.
-	prev, added, err = repo.SetMember(ctx, team.ID, user.ID, model.RoleEditor)
+	_, prev, err = repo.SetMember(ctx, team.ID, user.ID, model.RoleEditor)
 	require.NoError(t, err)
-	assert.False(t, added)
 	assert.Equal(t, model.RoleViewer, prev)
 	role, _ = repo.GetRole(ctx, team.ID, user.ID)
 	assert.Equal(t, model.RoleEditor, role)
@@ -130,12 +131,15 @@ func TestTeamRepoMembers(t *testing.T) {
 	require.Len(t, memberships, 1)
 	assert.Equal(t, team.ID, memberships[0].TeamID)
 
-	require.NoError(t, repo.UpdateMemberRole(ctx, team.ID, user.ID, model.RoleAdmin))
+	prev, err = repo.UpdateMemberRole(ctx, team.ID, user.ID, model.RoleAdmin)
+	require.NoError(t, err)
+	assert.Equal(t, model.RoleEditor, prev)
 	role, _ = repo.GetRole(ctx, team.ID, user.ID)
 	assert.Equal(t, model.RoleAdmin, role)
 
 	stranger := testutil.SeedUser(t, db, "s@acme.com", "S", false)
-	assert.ErrorIs(t, repo.UpdateMemberRole(ctx, team.ID, stranger.ID, model.RoleAdmin), repository.ErrNotFound)
+	_, err = repo.UpdateMemberRole(ctx, team.ID, stranger.ID, model.RoleAdmin)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 
 	// Only users of the team's company can join it.
 	_, _, err = repo.SetMember(ctx, team.ID, stranger.ID, model.RoleEditor)
@@ -155,8 +159,11 @@ func TestTeamRepoMembers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, memberships)
 
-	require.NoError(t, repo.RemoveMember(ctx, team.ID, user.ID))
-	assert.ErrorIs(t, repo.RemoveMember(ctx, team.ID, user.ID), repository.ErrNotFound)
+	prev, err = repo.RemoveMember(ctx, team.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.RoleAdmin, prev)
+	_, err = repo.RemoveMember(ctx, team.ID, user.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 func TestTeamRepoQueryErrors(t *testing.T) {
@@ -180,8 +187,45 @@ func TestTeamRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, _, err = repo.SetMember(ctx, id, id, model.RoleViewer)
 	assert.ErrorIs(t, err, context.Canceled)
-	_, err = repo.CreateWithAdmin(ctx, id, "x", "", id)
+	_, _, err = repo.CreateWithAdmin(ctx, id, "x", "", id)
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.Memberships(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestTeamRepoCreateWithAdmin(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewTeamRepo(db)
+	ctx := t.Context()
+	company := testutil.SeedCompany(t, db, "Acme")
+	admin := testutil.SeedUser(t, db, "a@acme.com", "A", false)
+	require.NoError(t, repository.NewCompanyRepo(db).SetMember(ctx, company.ID, admin.ID, model.CompanyRoleMember))
+	outsider := testutil.SeedUser(t, db, "o@x.com", "O", false)
+	countTeams := func() int {
+		var n int
+		require.NoError(t, db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM teams`).Scan(&n))
+		return n
+	}
+
+	team, m, err := repo.CreateWithAdmin(ctx, company.ID, "Platform", "", admin.ID)
+	require.NoError(t, err)
+	assert.Equal(t, team.ID, m.TeamID)
+	assert.Equal(t, model.RoleAdmin, m.Role)
+
+	tests := []struct {
+		name    string
+		team    string
+		adminID string
+		wantErr error
+	}{
+		{"admin outside the company rolls the team back", "T1", outsider.ID, repository.ErrConflictOrNotFound},
+		{"name taken", "Platform", admin.ID, repository.ErrTeamNameTaken},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := repo.CreateWithAdmin(ctx, company.ID, tt.team, "", tt.adminID)
+			assert.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, 1, countTeams(), "no team left behind")
+		})
+	}
 }

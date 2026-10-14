@@ -9,7 +9,7 @@ import (
 
 // validateName trims a team/flagset name in place and rejects it when empty or
 // longer than 120 characters, so create and update enforce the same rules.
-func validateName(name *string) error {
+func validateName(name *string) model.ValidationErrors {
 	*name = strings.TrimSpace(*name)
 	if *name == "" {
 		return model.ValidationErrors{{Field: "name", Message: "name is required"}}

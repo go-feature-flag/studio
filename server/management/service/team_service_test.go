@@ -25,6 +25,34 @@ func auditCount(t *testing.T, db *repository.DB, action model.AuditAction, targe
 	return n
 }
 
+// validationFields returns the fields named by a model.ValidationErrors error.
+func validationFields(t *testing.T, err error) []string {
+	t.Helper()
+	var ve model.ValidationErrors
+	require.ErrorAs(t, err, &ve)
+	fields := make([]string, len(ve))
+	for i, e := range ve {
+		fields[i] = e.Field
+	}
+	return fields
+}
+
+// assertLastMemberAudit checks the before/after payloads of the newest
+// team_member audit entry about userID ("" means NULL).
+func assertLastMemberAudit(t *testing.T, db *repository.DB, userID, before, after string) {
+	t.Helper()
+	var gotBefore, gotAfter []byte
+	require.NoError(t, db.Pool.QueryRow(context.Background(), `SELECT before, after FROM audit_log
+		WHERE target_type = 'team_member' AND target_id = $1 ORDER BY id DESC LIMIT 1`, userID).Scan(&gotBefore, &gotAfter))
+	for _, c := range []struct{ want, got string }{{before, string(gotBefore)}, {after, string(gotAfter)}} {
+		if c.want == "" {
+			assert.Empty(t, c.got)
+		} else {
+			assert.JSONEq(t, c.want, c.got)
+		}
+	}
+}
+
 func newTeamService(db *repository.DB) *service.TeamService {
 	return service.NewTeamService(
 		repository.NewTeamRepo(db),
@@ -66,25 +94,26 @@ func TestTeamServiceCreate(t *testing.T) {
 		assert.ErrorIs(t, err, repository.ErrTeamNameTaken)
 	})
 
-	t.Run("missing name -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, company.ID, &model.CreateTeamRequest{AdminEmail: "admin@acme.com"})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
-
-	t.Run("blank or over-long name -> validation error", func(t *testing.T) {
-		for _, name := range []string{"   ", strings.Repeat("x", 121)} {
-			_, err := svc.Create(ctx, actor.ID, company.ID, &model.CreateTeamRequest{Name: name, AdminEmail: "admin@acme.com"})
-			var ve model.ValidationErrors
-			assert.ErrorAs(t, err, &ve, "name %q", name)
-		}
-	})
-
-	t.Run("missing admin email -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, company.ID, &model.CreateTeamRequest{Name: "X"})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
-	})
+	validation := []struct {
+		name       string
+		companyID  string
+		req        model.CreateTeamRequest
+		wantFields []string
+	}{
+		{"missing name", company.ID, model.CreateTeamRequest{AdminEmail: "admin@acme.com"}, []string{"name"}},
+		{"blank name", company.ID, model.CreateTeamRequest{Name: "  ", AdminEmail: "admin@acme.com"}, []string{"name"}},
+		{"over-long name", company.ID, model.CreateTeamRequest{Name: strings.Repeat("x", 121), AdminEmail: "a@acme.com"},
+			[]string{"name"}},
+		{"missing admin email", company.ID, model.CreateTeamRequest{Name: "X"}, []string{"adminEmail"}},
+		{"everything missing reports every field", "", model.CreateTeamRequest{},
+			[]string{"name", "companyId", "adminEmail"}},
+	}
+	for _, tt := range validation {
+		t.Run(tt.name+" -> validation error", func(t *testing.T) {
+			_, err := svc.Create(ctx, actor.ID, tt.companyID, &tt.req)
+			assert.Equal(t, tt.wantFields, validationFields(t, err))
+		})
+	}
 
 	t.Run("admin user not found -> not found", func(t *testing.T) {
 		_, err := svc.Create(ctx, actor.ID, company.ID, &model.CreateTeamRequest{
@@ -115,6 +144,9 @@ func TestTeamServiceUpdateDelete(t *testing.T) {
 		updated, err := svc.Update(ctx, actor.ID, team.ID, &model.UpdateTeamRequest{Name: new("Core")})
 		require.NoError(t, err)
 		assert.Equal(t, "Core", updated.Name)
+		got, err := svc.Get(ctx, team.ID)
+		require.NoError(t, err)
+		assert.Equal(t, "Core", got.Name)
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetTeam))
 	})
 
@@ -126,8 +158,7 @@ func TestTeamServiceUpdateDelete(t *testing.T) {
 
 	t.Run("update blank name -> validation error, name is trimmed", func(t *testing.T) {
 		_, err := svc.Update(ctx, actor.ID, team.ID, &model.UpdateTeamRequest{Name: new("  ")})
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, err, &ve)
+		assert.Equal(t, []string{"name"}, validationFields(t, err))
 
 		updated, err := svc.Update(ctx, actor.ID, team.ID, &model.UpdateTeamRequest{Name: new(" Core ")})
 		require.NoError(t, err)
@@ -137,9 +168,8 @@ func TestTeamServiceUpdateDelete(t *testing.T) {
 	t.Run("delete happy path records audit and removes the team", func(t *testing.T) {
 		require.NoError(t, svc.Delete(ctx, actor.ID, team.ID))
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionDelete, model.AuditTargetTeam))
-		got, err := svc.Get(ctx, team.ID)
-		require.NoError(t, err)
-		assert.Nil(t, got)
+		_, err := svc.Get(ctx, team.ID)
+		assert.ErrorIs(t, err, service.ErrNotFound)
 	})
 
 	t.Run("delete missing -> not found, no audit", func(t *testing.T) {
@@ -181,6 +211,7 @@ func TestTeamServiceMembers(t *testing.T) {
 		assert.True(t, added)
 		assert.Equal(t, user.ID, m.UserID)
 		assert.Equal(t, model.RoleEditor, m.Role)
+		assert.False(t, m.CreatedAt.IsZero())
 		assert.Equal(t, counts{before.add + 1, before.update, before.remove}, audited(t))
 		members, err := svc.ListMembers(ctx, team.ID)
 		require.NoError(t, err)
@@ -198,6 +229,7 @@ func TestTeamServiceMembers(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, added)
 		assert.Equal(t, counts{before.add, before.update + 1, before.remove}, audited(t))
+		assertLastMemberAudit(t, db, user.ID, `{"role":"viewer"}`, `{"role":"editor"}`)
 	})
 
 	t.Run("concurrent adds report one addition", func(t *testing.T) {
@@ -232,7 +264,8 @@ func TestTeamServiceMembers(t *testing.T) {
 		role    model.Role
 		wantErr error
 	}{
-		{name: "invalid role", role: "bogus", wantErr: model.ValidationErrors{}},
+		{name: "invalid role", role: "bogus", wantErr: model.ValidationErrors{{Field: "role"}}},
+		{name: "blank email", email: " ", role: model.RoleViewer, wantErr: model.ValidationErrors{{Field: "email"}}},
 		{name: "unknown user", email: "nobody@acme.com", role: model.RoleViewer, wantErr: service.ErrNotFound},
 		{name: "missing team", teamID: "00000000-0000-0000-0000-000000000000", role: model.RoleViewer,
 			wantErr: service.ErrNotFound},
@@ -250,9 +283,8 @@ func TestTeamServiceMembers(t *testing.T) {
 				email = tt.email
 			}
 			_, _, err := svc.AddMember(ctx, actor.ID, teamID, &model.AddMemberRequest{Email: email, Role: tt.role})
-			if _, ok := tt.wantErr.(model.ValidationErrors); ok {
-				var ve model.ValidationErrors
-				assert.ErrorAs(t, err, &ve)
+			if want, ok := tt.wantErr.(model.ValidationErrors); ok {
+				assert.Equal(t, []string{want[0].Field}, validationFields(t, err))
 				return
 			}
 			assert.ErrorIs(t, err, tt.wantErr)
@@ -265,12 +297,12 @@ func TestTeamServiceMembers(t *testing.T) {
 		before := audited(t)
 		require.NoError(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, model.RoleAdmin))
 		assert.Equal(t, counts{before.add, before.update + 1, before.remove}, audited(t))
+		assertLastMemberAudit(t, db, user.ID, `{"role":"viewer"}`, `{"role":"admin"}`)
 		role, err := svc.Role(ctx, team.ID, user.ID)
 		require.NoError(t, err)
 		assert.Equal(t, model.RoleAdmin, role)
 
-		var ve model.ValidationErrors
-		assert.ErrorAs(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, "bogus"), &ve)
+		assert.Equal(t, []string{"role"}, validationFields(t, svc.UpdateMember(ctx, actor.ID, team.ID, user.ID, "bogus")))
 	})
 
 	t.Run("update role of a non-member -> not found", func(t *testing.T) {
@@ -284,6 +316,7 @@ func TestTeamServiceMembers(t *testing.T) {
 		before := audited(t)
 		require.NoError(t, svc.RemoveMember(ctx, actor.ID, team.ID, user.ID))
 		assert.Equal(t, counts{before.add, before.update, before.remove + 1}, audited(t))
+		assertLastMemberAudit(t, db, user.ID, `{"role":"viewer"}`, "")
 		assert.ErrorIs(t, svc.RemoveMember(ctx, actor.ID, team.ID, user.ID), service.ErrNotFound)
 	})
 }
@@ -315,8 +348,8 @@ func TestTeamServiceAddableMembers(t *testing.T) {
 }
 
 // TestTeamServiceRoleInheritance verifies a company admin inherits the admin role
-// on every team in their company, and that an explicit team role takes the higher
-// of the two via maxRole.
+// on every team in their company, and that the higher of the explicit team role
+// and the inherited one wins.
 func TestTeamServiceRoleInheritance(t *testing.T) {
 	db := testutil.StartPostgres(t)
 	svc := newTeamService(db)
