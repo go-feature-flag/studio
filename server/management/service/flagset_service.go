@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
@@ -36,9 +38,10 @@ func (f flagsetSettings) validate() error {
 	if f.name != nil {
 		errs = append(errs, validateName(f.name, "name")...)
 	}
-	if f.pollingMs != nil && *f.pollingMs <= 0 {
+	// The column is an INTEGER: a larger value would fail to encode (500).
+	if f.pollingMs != nil && (*f.pollingMs <= 0 || *f.pollingMs > math.MaxInt32) {
 		errs = append(errs, model.ValidationError{
-			Field: "pollingIntervalMs", Message: "pollingIntervalMs must be greater than 0",
+			Field: "pollingIntervalMs", Message: fmt.Sprintf("pollingIntervalMs must be between 1 and %d", math.MaxInt32),
 		})
 	}
 	if f.fileFormat != nil && !f.fileFormat.IsValid() {
@@ -167,6 +170,9 @@ func (s *FlagsetService) Delete(ctx context.Context, actorID, id string) error {
 // CreateAPIKey adds a key to the flagset. The repository refuses a deleted
 // flagset, including one deleted concurrently, with ErrNotFound.
 func (s *FlagsetService) CreateAPIKey(ctx context.Context, actorID, id, label string) (*model.FlagsetAPIKey, error) {
+	if err := validateName(&label, "label"); err != nil {
+		return nil, err
+	}
 	fs, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -184,6 +190,9 @@ func (s *FlagsetService) CreateAPIKey(ctx context.Context, actorID, id, label st
 }
 
 func (s *FlagsetService) ListAPIKeys(ctx context.Context, id string) ([]model.FlagsetAPIKey, error) {
+	if _, err := s.Get(ctx, id); err != nil {
+		return nil, err
+	}
 	return s.repo.ListAPIKeys(ctx, id)
 }
 
@@ -194,14 +203,16 @@ func (s *FlagsetService) DeleteAPIKey(ctx context.Context, actorID, id, keyID st
 	if err != nil {
 		return err
 	}
-	if err := s.repo.DeleteAPIKey(ctx, id, keyID); err != nil {
+	k, err := s.repo.DeleteAPIKey(ctx, id, keyID)
+	if err != nil {
 		return writeError(err)
 	}
-	s.auditAPIKey(ctx, actorID, fs, model.AuditActionDelete, keyID, "")
+	s.auditAPIKey(ctx, actorID, fs, model.AuditActionDelete, keyID, k.Label)
 	return nil
 }
 
-// auditAPIKey records a key event; the key itself is a secret and never logged.
+// auditAPIKey records a key event with its label (after a create, before a
+// delete); the key itself is a secret and never logged.
 func (s *FlagsetService) auditAPIKey(
 	ctx context.Context, actorID string, fs *model.Flagset, action model.AuditAction, keyID, label string,
 ) {
@@ -209,8 +220,11 @@ func (s *FlagsetService) auditAPIKey(
 		ActorUserID: &actorID, TeamID: &fs.TeamID, FlagsetID: &fs.ID,
 		Action: action, TargetType: model.AuditTargetAPIKey, TargetID: keyID,
 	}
-	if label != "" {
-		in.After = map[string]string{"label": label}
+	snapshot := map[string]string{"label": label}
+	if action == model.AuditActionDelete {
+		in.Before = snapshot
+	} else {
+		in.After = snapshot
 	}
 	_ = s.audit.Record(ctx, nil, in)
 }

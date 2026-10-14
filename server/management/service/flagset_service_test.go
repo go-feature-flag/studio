@@ -102,6 +102,8 @@ func TestFlagsetServiceValidation(t *testing.T) {
 		wantFields []string
 	}{
 		{"empty name", model.CreateFlagsetRequest{}, []string{"name"}},
+		{"polling interval beyond INTEGER", model.CreateFlagsetRequest{Name: "big", PollingIntervalMs: new(3_000_000_000)},
+			[]string{"pollingIntervalMs"}},
 		{"non-object evaluation context", model.CreateFlagsetRequest{
 			Name: "ctx", EvaluationContextEnrichment: json.RawMessage(`["a"]`),
 		}, []string{"evaluationContextEnrichment"}},
@@ -160,6 +162,16 @@ func TestFlagsetServiceAPIKeys(t *testing.T) {
 	assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetAPIKey))
 	assertLastAudit(t, db, model.AuditTargetAPIKey, k.ID, "", `{"label":"ci"}`)
 
+	t.Run("blank label -> validation error", func(t *testing.T) {
+		_, err := svc.CreateAPIKey(ctx, actor.ID, fs.ID, "  ")
+		assert.Equal(t, []string{"label"}, validationFields(t, err))
+	})
+
+	t.Run("list keys of a missing flagset -> not found", func(t *testing.T) {
+		_, err := svc.ListAPIKeys(ctx, "00000000-0000-0000-0000-000000000000")
+		assert.ErrorIs(t, err, service.ErrNotFound)
+	})
+
 	t.Run("missing or deleted flagset -> not found", func(t *testing.T) {
 		_, err := svc.CreateAPIKey(ctx, actor.ID, "00000000-0000-0000-0000-000000000000", "x")
 		assert.ErrorIs(t, err, service.ErrNotFound)
@@ -176,6 +188,7 @@ func TestFlagsetServiceAPIKeys(t *testing.T) {
 	t.Run("delete with audit", func(t *testing.T) {
 		require.NoError(t, svc.DeleteAPIKey(ctx, actor.ID, fs.ID, k.ID))
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionDelete, model.AuditTargetAPIKey))
+		assertLastAudit(t, db, model.AuditTargetAPIKey, k.ID, `{"label":"ci"}`, "")
 		keys, err := svc.ListAPIKeys(ctx, fs.ID)
 		require.NoError(t, err)
 		assert.Empty(t, keys)

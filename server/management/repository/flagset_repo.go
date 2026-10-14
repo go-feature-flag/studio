@@ -249,8 +249,18 @@ func (r *FlagsetRepo) ListAPIKeys(ctx context.Context, flagsetID string) ([]mode
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.FlagsetAPIKey])
 }
 
-// DeleteAPIKey revokes a key of the given flagset. Scoping by flagset means a
+// DeleteAPIKey revokes a key of the given flagset and returns it. Scoping by flagset means a
 // key id from another tenant's flagset is not found rather than deleted.
-func (r *FlagsetRepo) DeleteAPIKey(ctx context.Context, flagsetID, keyID string) error {
-	return r.db.execOne(ctx, `DELETE FROM flagset_api_keys WHERE id = $1 AND flagset_id = $2`, keyID, flagsetID)
+func (r *FlagsetRepo) DeleteAPIKey(ctx context.Context, flagsetID, keyID string) (*model.FlagsetAPIKey, error) {
+	var k model.FlagsetAPIKey
+	err := r.db.Pool.QueryRow(ctx, `DELETE FROM flagset_api_keys WHERE id = $1 AND flagset_id = $2
+		RETURNING id, flagset_id, label, api_key, created_by, created_at`, keyID, flagsetID,
+	).Scan(&k.ID, &k.FlagsetID, &k.Label, &k.APIKey, &k.CreatedBy, &k.CreatedAt)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &k, nil
 }

@@ -162,10 +162,15 @@ func TestFlagsetRepoAPIKeys(t *testing.T) {
 	assert.Equal(t, "U", *keys[0].CreatedByName)
 
 	other := testutil.SeedFlagset(t, db, team.ID, "staging")
-	assert.ErrorIs(t, repo.DeleteAPIKey(ctx, other.ID, key.ID), repository.ErrNotFound,
-		"a key of another flagset is not deleted")
-	require.NoError(t, repo.DeleteAPIKey(ctx, fs.ID, key.ID))
-	assert.ErrorIs(t, repo.DeleteAPIKey(ctx, fs.ID, key.ID), repository.ErrNotFound)
+	_, err = repo.DeleteAPIKey(ctx, other.ID, key.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound, "a key of another flagset is not deleted")
+	deleted, err := repo.DeleteAPIKey(ctx, fs.ID, key.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "ci", deleted.Label)
+	_, err = repo.DeleteAPIKey(ctx, fs.ID, key.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
+	_, err = repo.DeleteAPIKey(ctx, fs.ID, "abc")
+	assert.ErrorIs(t, err, repository.ErrNotFound, "malformed id")
 }
 
 func TestFlagsetRepoInsertAPIKeyDeletedFlagset(t *testing.T) {
