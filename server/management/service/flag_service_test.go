@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -244,45 +245,65 @@ func TestFlagServiceConcurrentUpdates(t *testing.T) {
 	}
 }
 
-// TestFlagServiceSaveIsAtomic: a failure late in a save (here the audit
-// insert, forced by a trigger) rolls back the flag, its version, the current
-// pointer and the tags.
-func TestFlagServiceSaveIsAtomic(t *testing.T) {
+// TestFlagServiceWritesAreAtomic: whichever write of a flag save, toggle or
+// delete fails (forced with a statement trigger on its table), the whole
+// operation rolls back: no flag, version, current pointer, tag or state change
+// is left behind.
+func TestFlagServiceWritesAreAtomic(t *testing.T) {
 	db := testutil.StartPostgres(t)
 	svc := newFlagService(db)
 	ctx := t.Context()
 	fs := flagsetWithTeam(t, db)
 	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
-	flag := testutil.SeedFlag(t, db, fs.ID, "existing", nil, &actor.ID)
-
-	_, err := db.Pool.Exec(ctx, `
-		CREATE FUNCTION fail_audit() RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN RAISE EXCEPTION 'audit down'; END $$;
-		CREATE TRIGGER fail_audit BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION fail_audit();`)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_, _ = db.Pool.Exec(context.Background(),
-			`DROP TRIGGER IF EXISTS fail_audit ON audit_log; DROP FUNCTION IF EXISTS fail_audit()`)
-	})
 	tagged := json.RawMessage(`{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"},` +
 		`"metadata":{"tags":["t"]}}`)
+	flag := testutil.SeedFlag(t, db, fs.ID, "existing", tagged, &actor.ID)
+	_, err := db.Pool.Exec(ctx, `CREATE FUNCTION fail_write() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'write down'; END $$`)
+	require.NoError(t, err)
 
-	_, err = svc.Create(ctx, actor.ID, fs.ID, &model.CreateFlagRequest{Name: "new", Payload: tagged})
-	require.ErrorContains(t, err, "audit down")
-	var flags int
-	require.NoError(t, db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flags WHERE name = 'new'`).Scan(&flags))
-	assert.Zero(t, flags, "no flag left behind")
+	tests := []struct {
+		table, event              string
+		disableFails, deleteFails bool
+	}{
+		{table: "audit_log", event: "INSERT", disableFails: true, deleteFails: true},
+		{table: "flag_versions", event: "INSERT"},
+		{table: "flags", event: "UPDATE", disableFails: true, deleteFails: true},
+		{table: "flag_tags", event: "INSERT"},
+		{table: "flag_tags", event: "DELETE", deleteFails: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.event+" "+tt.table, func(t *testing.T) {
+			_, err := db.Pool.Exec(ctx, fmt.Sprintf(`CREATE TRIGGER fail_write BEFORE %s ON %s
+				FOR EACH STATEMENT EXECUTE FUNCTION fail_write()`, tt.event, tt.table))
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				_, _ = db.Pool.Exec(context.Background(), "DROP TRIGGER fail_write ON "+tt.table)
+			})
 
-	_, err = svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{Payload: tagged})
-	require.ErrorContains(t, err, "audit down")
-	require.ErrorContains(t, svc.SetDisabled(ctx, actor.ID, flag.ID, true), "audit down")
-	require.ErrorContains(t, svc.Delete(ctx, actor.ID, flag.ID), "audit down")
-	got, err := svc.Get(ctx, flag.ID)
-	require.NoError(t, err, "the delete was rolled back")
-	assert.False(t, got.Disabled, "the disable was rolled back")
-	assert.Equal(t, 1, *got.CurrentVersion, "current pointer unchanged")
-	assert.Equal(t, 1, versionRowCount(t, db, flag.ID))
-	assert.Empty(t, tagRowsFor(t, db, flag.ID))
+			_, err = svc.Create(ctx, actor.ID, fs.ID, &model.CreateFlagRequest{Name: "new", Payload: tagged})
+			require.ErrorContains(t, err, "write down")
+			_, err = svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{
+				Payload: json.RawMessage(testutil.DefaultFlagPayload)})
+			require.ErrorContains(t, err, "write down")
+			if tt.disableFails {
+				require.ErrorContains(t, svc.SetDisabled(ctx, actor.ID, flag.ID, true), "write down")
+			}
+			if tt.deleteFails {
+				require.ErrorContains(t, svc.Delete(ctx, actor.ID, flag.ID), "write down")
+			}
+
+			var created int
+			require.NoError(t, db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flags WHERE name = 'new'`).Scan(&created))
+			assert.Zero(t, created, "no flag left behind")
+			got, err := svc.Get(ctx, flag.ID)
+			require.NoError(t, err, "not deleted")
+			assert.False(t, got.Disabled, "not disabled")
+			assert.Equal(t, 1, *got.CurrentVersion, "current pointer unchanged")
+			assert.Equal(t, 1, versionRowCount(t, db, flag.ID))
+			assert.Equal(t, []string{"t"}, tagRowsFor(t, db, flag.ID))
+		})
+	}
 }
 
 // TestFlagServiceUpdateRacingDelete: a save that waits on a delete holding

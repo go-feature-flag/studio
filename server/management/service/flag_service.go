@@ -39,7 +39,7 @@ func (s *FlagService) Create(
 	if err := errs.Err(); err != nil {
 		return nil, err
 	}
-	fs, err := s.liveFlagset(ctx, flagsetID)
+	fs, err := liveFlagset(ctx, s.flagsets, flagsetID)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (s *FlagService) Create(
 		if err != nil {
 			return err
 		}
-		if err := s.saveVersion(ctx, tx, f, payload, req.Comment, actorID); err != nil {
+		if err := saveFlagVersion(ctx, tx, s.flags, s.versions, f, payload, req.Comment, actorID); err != nil {
 			return err
 		}
 		out = f
@@ -65,20 +65,22 @@ func (s *FlagService) Create(
 	return out, nil
 }
 
-// saveVersion stores payload as f's new current version and mirrors its tags,
-// inside tx, and updates f.
-func (s *FlagService) saveVersion(
-	ctx context.Context, tx pgx.Tx, f *model.Flag, payload json.RawMessage, comment, actorID string,
+// saveFlagVersion stores payload as f's new current version and mirrors its
+// tags, inside tx, and updates f. It is the only path writing versions, so a
+// save, a rollback (VersionService) and a create stay consistent.
+func saveFlagVersion(
+	ctx context.Context, tx pgx.Tx, flags *repository.FlagRepo, versions *repository.FlagVersionRepo,
+	f *model.Flag, payload json.RawMessage, comment, actorID string,
 ) error {
-	v, err := s.versions.Insert(ctx, tx, f.ID, payload, comment, &actorID)
+	v, err := versions.Insert(ctx, tx, f.ID, payload, comment, &actorID)
 	if err != nil {
 		return err
 	}
-	updatedAt, err := s.flags.UpdateCurrentVersion(ctx, tx, f.ID, v.ID)
+	updatedAt, err := flags.UpdateCurrentVersion(ctx, tx, f.ID, v.ID)
 	if err != nil {
 		return err
 	}
-	if err := s.flags.ReplaceFlagTags(ctx, tx, f.ID, model.FlagTagsFromPayload(payload)); err != nil {
+	if err := flags.ReplaceFlagTags(ctx, tx, f.ID, model.FlagTagsFromPayload(payload)); err != nil {
 		return err
 	}
 	f.CurrentVersionID, f.CurrentVersion, f.Payload, f.UpdatedAt = &v.ID, &v.VersionNumber, v.Payload, updatedAt
@@ -86,8 +88,8 @@ func (s *FlagService) saveVersion(
 }
 
 // liveFlagset returns the flagset, or ErrNotFound when it is missing or deleted.
-func (s *FlagService) liveFlagset(ctx context.Context, id string) (*model.Flagset, error) {
-	fs, err := s.flagsets.GetByID(ctx, id)
+func liveFlagset(ctx context.Context, flagsets *repository.FlagsetRepo, id string) (*model.Flagset, error) {
+	fs, err := flagsets.GetByID(ctx, id)
 	if err == nil && fs == nil {
 		return nil, ErrNotFound
 	}
@@ -119,16 +121,6 @@ func preparePayload(raw json.RawMessage) (json.RawMessage, model.ValidationError
 		return nil, invalid
 	}
 	return payload, nil
-}
-
-// teamIDOf returns the id of the team owning flagsetID, or nil when it can't be
-// resolved (audit enrichment only, so lookup errors are ignored).
-func teamIDOf(ctx context.Context, flagsets *repository.FlagsetRepo, flagsetID string) *string {
-	fs, _ := flagsets.GetByID(ctx, flagsetID)
-	if fs == nil {
-		return nil
-	}
-	return &fs.TeamID
 }
 
 func (s *FlagService) Get(ctx context.Context, id string) (*model.Flag, error) {
@@ -179,7 +171,7 @@ func (s *FlagService) Update(
 	if err != nil {
 		return nil, err
 	}
-	fs, err := s.liveFlagset(ctx, current.FlagsetID)
+	fs, err := liveFlagset(ctx, s.flagsets, current.FlagsetID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +190,7 @@ func (s *FlagService) Update(
 			return errs
 		}
 		after := *before
-		if err := s.saveVersion(ctx, tx, &after, payload, req.Comment, actorID); err != nil {
+		if err := saveFlagVersion(ctx, tx, s.flags, s.versions, &after, payload, req.Comment, actorID); err != nil {
 			return err
 		}
 		out = &after
@@ -255,7 +247,10 @@ func (s *FlagService) lockedWrite(
 	if err != nil {
 		return err
 	}
-	teamID := teamIDOf(ctx, s.flagsets, current.FlagsetID)
+	fs, err := liveFlagset(ctx, s.flagsets, current.FlagsetID)
+	if err != nil {
+		return err
+	}
 	err = pgx.BeginFunc(ctx, s.db.Pool, func(tx pgx.Tx) error {
 		before, err := s.flags.GetForUpdate(ctx, tx, id)
 		if err != nil {
@@ -268,7 +263,7 @@ func (s *FlagService) lockedWrite(
 		if err != nil {
 			return err
 		}
-		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, teamID, &before.FlagsetID, &id
+		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, &fs.TeamID, &before.FlagsetID, &id
 		in.TargetType, in.TargetID = model.AuditTargetFlag, id
 		return s.audit.Record(ctx, tx, in)
 	})
@@ -291,7 +286,7 @@ func (s *FlagService) Evaluate(
 	if err != nil {
 		return nil, err
 	}
-	fs, err := s.liveFlagset(ctx, f.FlagsetID)
+	fs, err := liveFlagset(ctx, s.flagsets, f.FlagsetID)
 	if err != nil {
 		return nil, err
 	}
