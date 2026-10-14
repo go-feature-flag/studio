@@ -14,14 +14,23 @@ type FlagRepo struct{ db *DB }
 
 func NewFlagRepo(db *DB) *FlagRepo { return &FlagRepo{db: db} }
 
+// Create returns ErrNotFound when the flagset is missing or deleted. FOR SHARE
+// makes the insert wait for a concurrent FlagsetRepo.SoftDelete and then see
+// the flagset as deleted; if the insert wins, the delete waits for tx and then
+// soft-deletes the new flag too. The foreign key alone would let a live flag
+// slip in under a deleted flagset.
 func (r *FlagRepo) Create(ctx context.Context, tx pgx.Tx, flagsetID, name string) (*model.Flag, error) {
 	var f model.Flag
 	err := tx.QueryRow(ctx, `
-		INSERT INTO flags (flagset_id, name) VALUES ($1, $2)
+		INSERT INTO flags (flagset_id, name)
+		SELECT id, $2 FROM flagsets WHERE id = $1 AND deleted_at IS NULL FOR SHARE
 		RETURNING id, flagset_id, name, current_version_id, disabled, created_at, updated_at`,
 		flagsetID, name,
 	).Scan(&f.ID, &f.FlagsetID, &f.Name, &f.CurrentVersionID, &f.Disabled, &f.CreatedAt, &f.UpdatedAt)
 	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return &f, nil
@@ -55,7 +64,9 @@ func likeContains(s string) string {
 	return "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(s) + "%"
 }
 
-func (r *FlagRepo) ListByFlagset(ctx context.Context, flagsetID string, filters model.FlagFilters) ([]model.FlagListItem, int, error) {
+func (r *FlagRepo) ListByFlagset(
+	ctx context.Context, flagsetID string, filters model.FlagFilters,
+) ([]model.FlagListItem, int, error) {
 	// flagset_id is bound as $1 before these conditions, so the builder must
 	// number its placeholders starting at $2.
 	qb := NewQueryBuilder(1)
@@ -75,15 +86,16 @@ func (r *FlagRepo) ListByFlagset(ctx context.Context, flagsetID string, filters 
 	}
 
 	filters.Page, filters.PageSize = model.ClampPage(filters.Page, filters.PageSize)
-	offset := (filters.Page - 1) * filters.PageSize
+	limit, offset := qb.Arg(filters.PageSize), qb.Arg((filters.Page-1)*filters.PageSize)
+	_, args = qb.Build()
 	listQ := fmt.Sprintf(`
 		SELECT f.id, f.flagset_id, f.name, fv.version_number AS current_version, f.disabled, f.updated_at
 		FROM flags f
 		LEFT JOIN flag_versions fv ON fv.id = f.current_version_id
 		WHERE f.flagset_id = $1 AND f.deleted_at IS NULL%s
 		ORDER BY f.name
-		LIMIT $%d OFFSET $%d`, where, len(countArgs)+1, len(countArgs)+2)
-	listArgs := append(countArgs, filters.PageSize, offset)
+		LIMIT %s OFFSET %s`, where, limit, offset)
+	listArgs := append([]any{flagsetID}, args...)
 
 	rows, err := r.db.Pool.Query(ctx, listQ, listArgs...)
 	if err != nil {
@@ -114,7 +126,9 @@ var teamFlagOrders = map[string]string{
 // with the flagset name, type (flag_versions.flag_type) and owner (the current
 // version's author), plus the total matching the filters. Tags use AND
 // semantics against the flag_tags mirror.
-func (r *FlagRepo) ListByTeam(ctx context.Context, teamID string, filters model.TeamFlagFilters) ([]model.FlagInstance, int, error) {
+func (r *FlagRepo) ListByTeam(
+	ctx context.Context, teamID string, filters model.TeamFlagFilters,
+) ([]model.FlagInstance, int, error) {
 	qb := NewQueryBuilder(1)
 	if len(filters.Tags) > 0 {
 		qb.Add("$%d::text[] <@ ARRAY(SELECT ft.tag FROM flag_tags ft WHERE ft.flag_id = f.id)", filters.Tags)
@@ -157,12 +171,14 @@ func (r *FlagRepo) ListByTeam(ctx context.Context, teamID string, filters model.
 	order = fmt.Sprintf(order, dir) + ", f.id"
 
 	filters.Page, filters.PageSize = model.ClampPage(filters.Page, filters.PageSize)
-	rows, err := r.db.Pool.Query(ctx, fmt.Sprintf(`
+	limit, offset := qb.Arg(filters.PageSize), qb.Arg((filters.Page-1)*filters.PageSize)
+	_, args = qb.Build()
+	rows, err := r.db.Pool.Query(ctx, `
 		SELECT f.id, f.flagset_id, fs.name, f.name, fv.payload, COALESCE(fv.flag_type, 'unknown'),
 		       fv.version_number, f.disabled, u.name, f.updated_at`+teamFlagsFrom+where+`
 		ORDER BY `+order+`
-		LIMIT $%d OFFSET $%d`, len(countArgs)+1, len(countArgs)+2),
-		append(countArgs, filters.PageSize, (filters.Page-1)*filters.PageSize)...)
+		LIMIT `+limit+` OFFSET `+offset,
+		append([]any{teamID}, args...)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -171,7 +187,8 @@ func (r *FlagRepo) ListByTeam(ctx context.Context, teamID string, filters model.
 	for rows.Next() {
 		var it model.FlagInstance
 		var payload json.RawMessage
-		if err := rows.Scan(&it.ID, &it.FlagsetID, &it.FlagsetName, &it.Name, &payload, &it.Type, &it.CurrentVersion, &it.Disabled, &it.Owner, &it.UpdatedAt); err != nil {
+		if err := rows.Scan(&it.ID, &it.FlagsetID, &it.FlagsetName, &it.Name, &payload, &it.Type,
+			&it.CurrentVersion, &it.Disabled, &it.Owner, &it.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
 		it.Variations, it.Distribution, it.TargetingRuleCount, it.Progressive = model.FlagSummaryFromPayload(payload)
@@ -198,10 +215,18 @@ func (r *FlagRepo) ListTeamOwners(ctx context.Context, teamID string) ([]string,
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// UpdateCurrentVersion returns ErrNotFound when the flag is deleted, so the
+// caller rolls back instead of saving a version nobody can see.
 func (r *FlagRepo) UpdateCurrentVersion(ctx context.Context, tx pgx.Tx, flagID, versionID string) error {
-	_, err := tx.Exec(ctx,
-		`UPDATE flags SET current_version_id = $2, updated_at = NOW() WHERE id = $1`, flagID, versionID)
-	return err
+	tag, err := tx.Exec(ctx, `UPDATE flags SET current_version_id = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`, flagID, versionID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ReplaceFlagTags rewrites the flag_tags rows for a flag to exactly the supplied
@@ -212,22 +237,9 @@ func (r *FlagRepo) ReplaceFlagTags(ctx context.Context, tx pgx.Tx, flagID string
 	if _, err := tx.Exec(ctx, `DELETE FROM flag_tags WHERE flag_id = $1`, flagID); err != nil {
 		return err
 	}
-	if len(tags) == 0 {
-		return nil
-	}
-	batch := &pgx.Batch{}
-	for _, tag := range tags {
-		batch.Queue(`INSERT INTO flag_tags (flag_id, tag) VALUES ($1, $2)
-			ON CONFLICT (flag_id, tag) DO NOTHING`, flagID, tag)
-	}
-	br := tx.SendBatch(ctx, batch)
-	defer br.Close()
-	for range tags {
-		if _, err := br.Exec(); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := tx.Exec(ctx, `INSERT INTO flag_tags (flag_id, tag) SELECT $1, unnest($2::text[])
+		ON CONFLICT (flag_id, tag) DO NOTHING`, flagID, tags)
+	return err
 }
 
 // ListTeamTags returns the distinct tags used across a team's non-deleted flags,
@@ -252,19 +264,26 @@ func (r *FlagRepo) SetDisabled(ctx context.Context, flagID string, disabled bool
 		`UPDATE flags SET disabled = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID, disabled)
 }
 
+// SoftDelete marks the flag deleted and drops its flag_tags mirror rows in one
+// transaction, so a failure can't leave the flag deleted but report an error.
+// The tags are dropped so the mirror and its index don't accumulate dead rows
+// (reads already filter on deleted_at).
 func (r *FlagRepo) SoftDelete(ctx context.Context, flagID string) error {
-	if err := r.db.execOne(ctx,
-		`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID); err != nil {
+	return pgx.BeginFunc(ctx, r.db.Pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx,
+			`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID)
+		if err != nil {
+			if isNoRows(err) {
+				return ErrNotFound
+			}
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		_, err = tx.Exec(ctx, `DELETE FROM flag_tags WHERE flag_id = $1`, flagID)
 		return err
-	}
-	// Drop the flag's tag mirror rows so the flag_tags table and its index don't
-	// accumulate dead rows for soft-deleted flags (read queries already filter on
-	// deleted_at, so this is hygiene, not correctness). A resurrected flag would
-	// repopulate them on its next update.
-	if _, err := r.db.Pool.Exec(ctx, `DELETE FROM flag_tags WHERE flag_id = $1`, flagID); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
 func (r *FlagRepo) GetFlagsetID(ctx context.Context, flagID string) (string, error) {

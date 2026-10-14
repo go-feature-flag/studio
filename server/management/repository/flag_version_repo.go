@@ -12,15 +12,23 @@ type FlagVersionRepo struct{ db *DB }
 
 func NewFlagVersionRepo(db *DB) *FlagVersionRepo { return &FlagVersionRepo{db: db} }
 
-func (r *FlagVersionRepo) Insert(ctx context.Context, tx pgx.Tx, flagID string, payload json.RawMessage, comment string, createdBy *string) (*model.FlagVersion, error) {
+func (r *FlagVersionRepo) Insert(
+	ctx context.Context, tx pgx.Tx, flagID string, payload json.RawMessage, comment string, createdBy *string,
+) (*model.FlagVersion, error) {
 	// Lock the flag row so concurrent writers serialize here; otherwise two
 	// transactions read the same MAX and the second fails the
-	// (flag_id, version_number) unique constraint.
-	if _, err := tx.Exec(ctx, `SELECT 1 FROM flags WHERE id = $1 FOR UPDATE`, flagID); err != nil {
+	// (flag_id, version_number) unique constraint. The deleted_at check, made
+	// after the lock, stops a save racing a delete: it returns ErrNotFound and
+	// the caller rolls back.
+	tag, err := tx.Exec(ctx, `SELECT 1 FROM flags WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, flagID)
+	if err != nil {
 		return nil, err
 	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
 	var nextNum int
-	err := tx.QueryRow(ctx,
+	err = tx.QueryRow(ctx,
 		`SELECT COALESCE(MAX(version_number),0)+1 FROM flag_versions WHERE flag_id = $1`, flagID).Scan(&nextNum)
 	if err != nil {
 		return nil, err
@@ -57,9 +65,12 @@ func (r *FlagVersionRepo) GetByFlagAndNumber(ctx context.Context, flagID string,
 	return &v, nil
 }
 
-func (r *FlagVersionRepo) ListByFlag(ctx context.Context, flagID string, limit, offset int) ([]model.FlagVersion, int, error) {
+func (r *FlagVersionRepo) ListByFlag(
+	ctx context.Context, flagID string, limit, offset int,
+) ([]model.FlagVersion, int, error) {
 	var total int
-	if err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flag_versions WHERE flag_id = $1`, flagID).Scan(&total); err != nil {
+	err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM flag_versions WHERE flag_id = $1`, flagID).Scan(&total)
+	if err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.db.Pool.Query(ctx, `

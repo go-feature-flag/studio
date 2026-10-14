@@ -61,9 +61,11 @@ func SeedFlagset(t *testing.T, db *repository.DB, teamID, name string) *model.Fl
 // DefaultFlagPayload is a valid boolean flag payload usable in tests.
 const DefaultFlagPayload = `{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"}}`
 
-// SeedFlag creates a flag with an initial version and sets it as current,
-// mirroring how the flag service creates flags (flag + version in one tx).
-func SeedFlag(t *testing.T, db *repository.DB, flagsetID, name string, payload json.RawMessage, createdBy *string) *model.Flag {
+// SeedFlag creates a flag with an initial version, sets it as current and
+// mirrors its tags, like the flag service does (all in one tx).
+func SeedFlag(
+	t *testing.T, db *repository.DB, flagsetID, name string, payload json.RawMessage, createdBy *string,
+) *model.Flag {
 	t.Helper()
 	if len(payload) == 0 {
 		payload = json.RawMessage(DefaultFlagPayload)
@@ -84,6 +86,10 @@ func SeedFlag(t *testing.T, db *repository.DB, flagsetID, name string, payload j
 		if err := flags.UpdateCurrentVersion(ctx, tx, created.ID, v.ID); err != nil {
 			return err
 		}
+		if err := flags.ReplaceFlagTags(ctx, tx, created.ID, model.FlagTagsFromPayload(payload)); err != nil {
+			return err
+		}
+		created.CurrentVersionID, created.CurrentVersion, created.Payload = &v.ID, &v.VersionNumber, v.Payload
 		f = created
 		return nil
 	})

@@ -1,8 +1,10 @@
 package repository_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
@@ -46,6 +48,64 @@ func TestFlagRepoCreateAndGet(t *testing.T) {
 	require.NotNil(t, withVersion.CurrentVersion)
 	assert.Equal(t, 1, *withVersion.CurrentVersion)
 	assert.JSONEq(t, testutil.DefaultFlagPayload, string(withVersion.Payload))
+	assert.Equal(t, withVersion.CurrentVersionID, seeded.CurrentVersionID, "SeedFlag returns the current version")
+	assert.JSONEq(t, testutil.DefaultFlagPayload, string(seeded.Payload))
+
+	tagged := testutil.SeedFlag(t, db, fs.ID, "tagged", json.RawMessage(
+		`{"variations":{"on":true},"defaultRule":{"variation":"on"},"metadata":{"tags":["a","b"]}}`), nil)
+	assert.Equal(t, 2, countFlagTags(t, db, tagged.ID), "SeedFlag mirrors the payload tags")
+}
+
+// TestFlagRepoWritesOnDeletedParents: writes to a deleted flagset or flag
+// return ErrNotFound, including when they race the delete.
+func TestFlagRepoWritesOnDeletedParents(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	flags := repository.NewFlagRepo(db)
+	versions := repository.NewFlagVersionRepo(db)
+	ctx := t.Context()
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+	inTx := func(fn func(tx pgx.Tx) error) error { return pgx.BeginFunc(ctx, db.Pool, fn) }
+
+	t.Run("create in a deleted flagset", func(t *testing.T) {
+		fs := testutil.SeedFlagset(t, db, team.ID, "gone")
+		require.NoError(t, repository.NewFlagsetRepo(db).SoftDelete(ctx, fs.ID))
+		err := inTx(func(tx pgx.Tx) error { _, err := flags.Create(ctx, tx, fs.ID, "f"); return err })
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+	})
+
+	t.Run("create racing a flagset delete waits and sees it deleted", func(t *testing.T) {
+		fs := testutil.SeedFlagset(t, db, team.ID, "racing")
+		tx, err := db.Pool.Begin(ctx)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = tx.Rollback(context.Background()) })
+		_, err = tx.Exec(ctx, `UPDATE flagsets SET deleted_at = NOW() WHERE id = $1`, fs.ID)
+		require.NoError(t, err)
+
+		done := make(chan error, 1)
+		go func() {
+			done <- inTx(func(tx pgx.Tx) error { _, err := flags.Create(ctx, tx, fs.ID, "f"); return err })
+		}()
+		select {
+		case err := <-done:
+			t.Fatalf("create did not wait for the delete: %v", err)
+		case <-time.After(200 * time.Millisecond):
+		}
+		require.NoError(t, tx.Commit(ctx))
+		assert.ErrorIs(t, <-done, repository.ErrNotFound)
+	})
+
+	t.Run("save a version of a deleted flag", func(t *testing.T) {
+		fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+		flag := testutil.SeedFlag(t, db, fs.ID, "f", nil, nil)
+		require.NoError(t, flags.SoftDelete(ctx, flag.ID))
+		err := inTx(func(tx pgx.Tx) error {
+			_, err := versions.Insert(ctx, tx, flag.ID, json.RawMessage(testutil.DefaultFlagPayload), "", nil)
+			return err
+		})
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+		err = inTx(func(tx pgx.Tx) error { return flags.UpdateCurrentVersion(ctx, tx, flag.ID, *flag.CurrentVersionID) })
+		assert.ErrorIs(t, err, repository.ErrNotFound)
+	})
 }
 
 func TestFlagRepoListByFlagsetFilters(t *testing.T) {
