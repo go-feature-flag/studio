@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -114,4 +115,48 @@ func TestCompanyRepoMembership(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{betaTeam}, teamIDs)
 	assert.True(t, errors.Is(repo.RemoveMember(ctx, company.ID, user.ID), repository.ErrNotFound))
+}
+
+func TestCompanyRepoFirst(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewCompanyRepo(db)
+
+	none, err := repo.First(t.Context())
+	require.NoError(t, err)
+	assert.Nil(t, none)
+
+	oldest := testutil.SeedCompany(t, db, "Zeta")
+	_ = testutil.SeedCompany(t, db, "Alpha")
+	first, err := repo.First(t.Context())
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	assert.Equal(t, oldest.ID, first.ID) // oldest, not alphabetical
+}
+
+// A dead context makes every query fail: errors must surface, not be read as
+// "not found".
+func TestCompanyRepoQueryErrors(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewCompanyRepo(db)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	id := "00000000-0000-0000-0000-000000000000"
+
+	_, err := repo.Create(ctx, "x", "")
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.GetByID(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.First(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.List(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.Update(ctx, id, nil, nil)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, repo.Delete(ctx, id), context.Canceled)
+	_, err = repo.ListMembers(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, repo.SetMember(ctx, id, id, model.CompanyRoleMember), context.Canceled)
+	assert.ErrorIs(t, repo.RemoveMember(ctx, id, id), context.Canceled)
+	_, err = repo.Membership(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
 }
