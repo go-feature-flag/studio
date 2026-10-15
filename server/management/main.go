@@ -34,16 +34,23 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := run(ctx, os.Args[1:])
+	cancel()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "fatal:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	fs := pflag.NewFlagSet("goff-management", pflag.ExitOnError)
+// run serves the API until ctx is cancelled, then shuts down gracefully.
+func run(ctx context.Context, args []string) error {
+	fs := pflag.NewFlagSet("goff-management", pflag.ContinueOnError)
 	config.RegisterFlags(fs)
-	if err := fs.Parse(os.Args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, pflag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 
@@ -60,9 +67,6 @@ func run() error {
 		return err
 	}
 	slog.SetDefault(log)
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	shutdownTelemetry, err := telemetry.Setup(ctx)
 	if err != nil {
@@ -119,9 +123,6 @@ func run() error {
 	}
 }
 
-// newLogger builds the logger for log.level and log.format, which
-// Config.Validate restricts to known values; anything else is an error here
-// too, so a format the validator accepts can't silently fall back to JSON.
 // newRouter wires every repository, service and handler on db into the API.
 func newRouter(ctx context.Context, cfg *config.Config, log *slog.Logger, db *repository.DB) (*echo.Echo, error) {
 	userRepo := repository.NewUserRepo(db)
@@ -159,6 +160,9 @@ func newRouter(ctx context.Context, cfg *config.Config, log *slog.Logger, db *re
 	return api.New(*cfg, log, handlers, services), nil
 }
 
+// newLogger builds the logger for log.level and log.format, which
+// Config.Validate restricts to known values; anything else is an error here
+// too, so a format the validator accepts can't silently fall back to JSON.
 func newLogger(cfg config.LogConfig) (*slog.Logger, error) {
 	opts := &slog.HandlerOptions{}
 	if cfg.Level != "" {
