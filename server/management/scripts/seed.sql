@@ -3,7 +3,8 @@
 -- at versions inserted later); it needs a superuser, as in the compose setup.
 BEGIN;
 SET session_replication_role = replica;
-TRUNCATE audit_log, flagset_api_keys, flag_tags, flag_versions, flags, flagsets, team_members, teams, users, companies RESTART IDENTITY CASCADE;
+TRUNCATE public.audit_log, public.flagset_api_keys, public.flag_tags, public.flag_versions, public.flags,
+  public.flagsets, public.team_members, public.teams, public.users, public.companies RESTART IDENTITY CASCADE;
 --
 -- PostgreSQL database dump
 --
