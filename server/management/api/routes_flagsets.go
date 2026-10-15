@@ -18,7 +18,9 @@ func registerFlagsetRoutes(g *echo.Group, h Handlers, s Services) {
 	fs.GET("", h.Flagsets.Get, viewer)
 	fs.PATCH("", h.Flagsets.Update, admin)
 	fs.DELETE("", h.Flagsets.Delete, admin)
-	fs.GET("/api-keys", h.Flagsets.ListAPIKeys, viewer)
+	// Keys are secrets (relay-proxy credentials outside Studio's RBAC and
+	// audit), so listing them takes the same role as creating them.
+	fs.GET("/api-keys", h.Flagsets.ListAPIKeys, admin)
 	fs.POST("/api-keys", h.Flagsets.CreateAPIKey, admin)
 	fs.DELETE("/api-keys/:keyId", h.Flagsets.DeleteAPIKey, admin)
 }
