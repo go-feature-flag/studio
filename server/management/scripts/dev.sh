@@ -33,7 +33,7 @@ for arg in "$@"; do
     --rebuild-infra) REBUILD_INFRA=1 ;;
     --build)         BUILD_ONLY=1 ;;
     -h|--help)
-      sed -n '1,20p' "${SCRIPT_DIR}/dev.sh" | sed 's/^# //;s/^#//'
+      sed -n '2,17s/^# \{0,1\}//p' "${SCRIPT_DIR}/dev.sh"
       exit 0
       ;;
     *) echo "Unknown flag: $arg" >&2; exit 2 ;;
@@ -50,10 +50,13 @@ elif [ -f "${SERVICE_DIR}/.env.example" ]; then
 fi
 if [ -n "${ENV_FILE}" ]; then
   echo "==> Loading env from ${ENV_FILE}"
+  # The caller's GOFF_MGMT_* variables win over the file.
+  caller_env=$(export -p | grep ' GOFF_MGMT_' || true)
   set -a
   # shellcheck disable=SC1090
   source "${ENV_FILE}"
   set +a
+  eval "${caller_env}"
 fi
 
 : "${GOFF_MGMT_DB_URL:=postgres://goff:goff@localhost:5432/goff_mgmt?sslmode=disable}"
@@ -89,7 +92,8 @@ wait_for() { # name, seconds, command...
   exit 1
 }
 if [ "$RUN_INFRA" = "1" ]; then
-  wait_for Postgres 60 docker compose exec -T postgres pg_isready -U goff -d goff_mgmt
+  # Over TCP: the image's init-time server only listens on the unix socket.
+  wait_for Postgres 60 docker compose exec -T postgres pg_isready -h 127.0.0.1 -U goff -d goff_mgmt
   # The API fetches the OIDC discovery document at startup and exits without it.
   wait_for Keycloak 120 curl -fsS "${GOFF_MGMT_OIDC_ISSUER:?set in .env}/.well-known/openid-configuration"
 fi
