@@ -568,7 +568,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "removing the last company admin",
+                        "description": "removing the last company admin, or any member in mono company mode",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }

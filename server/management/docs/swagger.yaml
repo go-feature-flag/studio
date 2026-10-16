@@ -1013,7 +1013,8 @@ paths:
           schema:
             $ref: '#/definitions/model.APIResponse'
         "409":
-          description: removing the last company admin
+          description: removing the last company admin, or any member in mono company
+            mode
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Remove a member from a company (company admin; also drops their team

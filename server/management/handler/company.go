@@ -189,7 +189,7 @@ func (h *CompanyHandler) UpdateMember(c *echo.Context) error {
 // @Failure 400 {object} model.APIResponse "malformed id"
 // @Failure 403 {object} model.APIResponse
 // @Failure 404 {object} model.APIResponse
-// @Failure 409 {object} model.APIResponse "removing the last company admin"
+// @Failure 409 {object} model.APIResponse "removing the last company admin, or any member in mono company mode"
 // @Router  /companies/{companyId}/members/{uid} [delete]
 func (h *CompanyHandler) RemoveMember(c *echo.Context) error {
 	claims := middleware.MustClaims(c)

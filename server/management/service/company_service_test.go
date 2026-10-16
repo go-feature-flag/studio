@@ -280,6 +280,20 @@ func TestCompanyServiceMonoCompany(t *testing.T) {
 	_, err = svc.Create(t.Context(), actor.ID, &model.CreateCompanyRequest{DisplayName: "Beta"})
 	assert.ErrorIs(t, err, service.ErrMonoCompanyExists)
 	assert.ErrorIs(t, err, service.ErrConflict)
+
+	// The next login would re-join a removed user, so removal is refused and
+	// the member is left in place.
+	user := testutil.SeedUser(t, db, "u@acme.com", "U", false)
+	co, err := repository.NewCompanyRepo(db).First(t.Context())
+	require.NoError(t, err)
+	testutil.SetCompanyMember(t, db, co.ID, user.ID, model.CompanyRoleMember)
+	err = svc.RemoveMember(t.Context(), actor.ID, co.ID, user.ID)
+	assert.ErrorIs(t, err, service.ErrMonoRemoveMember)
+	assert.ErrorIs(t, err, service.ErrConflict)
+	role, err := svc.Role(t.Context(), co.ID, user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.CompanyRoleMember, role)
+	assert.Equal(t, 0, auditCount(t, db, model.AuditActionDelete, model.AuditTargetCompanyMember))
 }
 
 func TestCompanyServiceQueryErrors(t *testing.T) {

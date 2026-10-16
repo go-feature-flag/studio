@@ -246,7 +246,15 @@ func (s *CompanyService) UpdateMember(
 	return nil
 }
 
+// ErrMonoRemoveMember refuses a removal that wouldn't stick: in mono company
+// mode the next login re-joins every user without a company.
+var ErrMonoRemoveMember = newPublicError(ErrConflict,
+	"members can't be removed in mono company mode: revoke their access at the identity provider")
+
 func (s *CompanyService) RemoveMember(ctx context.Context, actorID, companyID, userID string) error {
+	if s.mono {
+		return ErrMonoRemoveMember
+	}
 	if err := s.ensureNotLastAdmin(ctx, companyID, userID); err != nil {
 		return err
 	}
