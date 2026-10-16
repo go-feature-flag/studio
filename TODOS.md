@@ -13,7 +13,6 @@ _Nothing open._
 
 ## P1 — Correctness bugs
 
-- [ ] **[Services] Let a flagset update clear its JSON settings.** `null` for `evaluationContextEnrichment` or `defaultTestingEvaluationContext` passes validation but the repo's `COALESCE` keeps the old value, so the client gets 200 and nothing changes. Tell an absent key from an explicit `null` (a small `Nullable[T]` wrapper with `UnmarshalJSON`), or reject `null` on update.
 - [ ] **[Flags] Key flag owners by user id.** `ListByTeam`'s `Owner` filter and `ListTeamOwners` use `users.name`, which isn't unique and defaults to `''`: two users named "Alice" collapse into one owner, and a user with an empty name shows up as owner `""` instead of unassigned. Filter on `fv.created_by` and return `{id, name}` pairs.
 - [ ] **[Config] Document that durations need a unit.** `shutdownTimeout: 30` in YAML means 30 nanoseconds, not 30 seconds, because mapstructure assigns a bare number straight onto `time.Duration`; `Validate()` only rejects `<= 0`. Spell the units out in the config reference, or reject sub-millisecond durations in `Validate()`.
 - [ ] **[Repository] Narrow `isNoRows`.** It also maps pg 22P02 (invalid input) to "not found", which is right for a malformed uuid in `GetByID` but hides a bad cast in the ~20 other queries that reuse it (on `Exec` errors in `SoftDelete`/`SetDisabled`/`softDeleteFlag` only the 22P02 branch can fire). Validate the uuid in the lookups and keep `isNoRows` to `pgx.ErrNoRows`.

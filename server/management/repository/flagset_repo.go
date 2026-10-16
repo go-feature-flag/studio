@@ -118,17 +118,20 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 	if err != nil {
 		return nil, err
 	}
+	// An absent JSON setting (empty RawMessage) leaves the column unchanged; an
+	// explicit null clears it.
 	var fs model.Flagset
 	err = scanFlagset(r.db.Pool.QueryRow(ctx, `
 		UPDATE flagsets SET
 			name = COALESCE($2, name),
 			description = COALESCE($3, description),
-			evaluation_context_enrichment = COALESCE($4, evaluation_context_enrichment),
-			default_testing_evaluation_context = COALESCE($5, default_testing_evaluation_context),
+			evaluation_context_enrichment = CASE WHEN $4 THEN $5 ELSE evaluation_context_enrichment END,
+			default_testing_evaluation_context = CASE WHEN $6 THEN $7 ELSE default_testing_evaluation_context END,
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING `+flagsetCols,
-		id, req.Name, req.Description, j[0], j[1],
+		id, req.Name, req.Description,
+		len(req.EvaluationContextEnrichment) > 0, j[0], len(req.DefaultTestingEvaluationContext) > 0, j[1],
 	), &fs)
 	if err != nil {
 		// Not isNoRows: 22P02 here is usually invalid jsonb input, not a bad id.
@@ -144,7 +147,7 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 var flagsetJSONFields = []string{"evaluationContextEnrichment", "defaultTestingEvaluationContext"}
 
 // flagsetJSON encodes the flagset's JSON settings; empty or null ones become SQL
-// NULL, so Create stores NULL and Update leaves the column unchanged.
+// NULL.
 func flagsetJSON(raws ...json.RawMessage) ([]any, error) {
 	out := make([]any, len(raws))
 	errs := make([]error, 0, len(raws))

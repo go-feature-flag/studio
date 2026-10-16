@@ -36,7 +36,8 @@ type CreateFlagsetRequest struct {
 	DefaultTestingEvaluationContext json.RawMessage `json:"defaultTestingEvaluationContext,omitempty" swaggertype:"object"`
 }
 
-// UpdateFlagsetRequest is a partial update: absent fields are left unchanged.
+// UpdateFlagsetRequest is a partial update: absent fields are left unchanged,
+// and null clears a JSON setting.
 type UpdateFlagsetRequest struct {
 	Name                            *string         `json:"name,omitempty"`
 	Description                     *string         `json:"description,omitempty"`

@@ -214,6 +214,52 @@ func TestFlagsetRepoInsertAPIKeyDeletedFlagset(t *testing.T) {
 	})
 }
 
+// A PATCH body leaves an absent JSON setting unchanged, clears it on null and
+// replaces it on a value. The body is decoded like the handler does.
+func TestFlagsetRepoUpdateJSONSettings(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagsetRepo(db)
+	ctx := t.Context()
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+
+	const enrich, testCtx = `{"env":"prod"}`, `{"targetingKey":"k"}`
+	tests := []struct {
+		name                    string
+		body                    string
+		wantEnrich, wantTesting string // "" means NULL
+	}{
+		{"absent leaves both", `{"description":"d"}`, enrich, testCtx},
+		{"null clears one", `{"evaluationContextEnrichment":null}`, "", testCtx},
+		{"null clears both", `{"evaluationContextEnrichment":null,"defaultTestingEvaluationContext":null}`, "", ""},
+		{"value replaces", `{"defaultTestingEvaluationContext":{"targetingKey":"other"}}`,
+			enrich, `{"targetingKey":"other"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs, err := repo.Create(ctx, team.ID, &model.CreateFlagsetRequest{
+				Name: tt.name, EvaluationContextEnrichment: json.RawMessage(enrich),
+				DefaultTestingEvaluationContext: json.RawMessage(testCtx),
+			})
+			require.NoError(t, err)
+			var req model.UpdateFlagsetRequest
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &req))
+
+			got, err := repo.Update(ctx, fs.ID, &req)
+			require.NoError(t, err)
+			for _, c := range []struct {
+				want string
+				got  json.RawMessage
+			}{{tt.wantEnrich, got.EvaluationContextEnrichment}, {tt.wantTesting, got.DefaultTestingEvaluationContext}} {
+				if c.want == "" {
+					assert.Empty(t, c.got)
+				} else {
+					assert.JSONEq(t, c.want, string(c.got))
+				}
+			}
+		})
+	}
+}
+
 func TestFlagsetRepoQueryErrors(t *testing.T) {
 	db := testutil.StartPostgres(t)
 	repo := repository.NewFlagsetRepo(db)
