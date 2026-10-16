@@ -313,6 +313,10 @@ definitions:
         type: string
       owner:
         type: string
+      ownerId:
+        description: 'OwnerID identifies the owner: names aren''t unique, and may
+          be empty.'
+        type: string
       progressiveRollout:
         allOf:
         - $ref: '#/definitions/model.ProgressiveSummary'
@@ -356,6 +360,13 @@ definitions:
       name:
         type: string
       updatedAt:
+        type: string
+    type: object
+  model.FlagOwner:
+    properties:
+      id:
+        type: string
+      name:
         type: string
     type: object
   model.FlagVersion:
@@ -2094,7 +2105,7 @@ paths:
         in: query
         name: type
         type: string
-      - description: current version author name; __unassigned__ for flags without
+      - description: current version author's user id; __unassigned__ for flags without
           one
         in: query
         name: owner
@@ -2238,7 +2249,7 @@ paths:
             - properties:
                 data:
                   items:
-                    type: string
+                    $ref: '#/definitions/model.FlagOwner'
                   type: array
               type: object
       summary: List the distinct owners (current version authors) of a team's flags

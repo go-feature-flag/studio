@@ -2279,7 +2279,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "current version author name; __unassigned__ for flags without one",
+                        "description": "current version author's user id; __unassigned__ for flags without one",
                         "name": "owner",
                         "in": "query"
                     },
@@ -2494,7 +2494,7 @@ const docTemplate = `{
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "type": "string"
+                                                "$ref": "#/definitions/model.FlagOwner"
                                             }
                                         }
                                     }
@@ -2998,6 +2998,10 @@ const docTemplate = `{
                 "owner": {
                     "type": "string"
                 },
+                "ownerId": {
+                    "description": "OwnerID identifies the owner: names aren't unique, and may be empty.",
+                    "type": "string"
+                },
                 "progressiveRollout": {
                     "description": "Progressive is set only when the default rule is a progressive rollout; the\nlist renders it as a rocket + initial→end indicator instead of a bar.",
                     "allOf": [
@@ -3051,6 +3055,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.FlagOwner": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }

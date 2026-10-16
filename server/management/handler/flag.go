@@ -84,7 +84,7 @@ func (h *FlagHandler) List(c *echo.Context) error {
 // @Param    name      query string false "name contains filter (case-insensitive)"
 // @Param    flagsetId query string false "only flags of this flagset"
 // @Param    type      query string false "flag type" Enums(boolean, string, int, float, json)
-// @Param    owner     query string false "current version author name; __unassigned__ for flags without one"
+// @Param    owner     query string false "current version author's user id; __unassigned__ for flags without one"
 // @Param    disabled  query bool   false "filter disabled flags"
 // @Param    sort      query string false "sort field" Enums(updated, name, state) default(updated)
 // @Param    order     query string false "sort direction; defaults to desc for updated, asc otherwise" Enums(asc, desc)
@@ -157,7 +157,7 @@ const unassignedOwner = "__unassigned__"
 // @Tags     flags
 // @Produce  json
 // @Param    teamId path string true "team id"
-// @Success  200    {object} model.APIResponse{data=[]string}
+// @Success  200    {object} model.APIResponse{data=[]model.FlagOwner}
 // @Router   /teams/{teamId}/owners [get]
 func (h *FlagHandler) ListTeamOwners(c *echo.Context) error {
 	owners, err := h.svc.ListTeamOwners(c.Request().Context(), c.Param("teamId"))

@@ -145,7 +145,7 @@ func (s *FlagService) ListByTeam(
 	return s.flags.ListByTeam(ctx, teamID, filters)
 }
 
-func (s *FlagService) ListTeamOwners(ctx context.Context, teamID string) ([]string, error) {
+func (s *FlagService) ListTeamOwners(ctx context.Context, teamID string) ([]model.FlagOwner, error) {
 	return s.flags.ListTeamOwners(ctx, teamID)
 }
 

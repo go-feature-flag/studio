@@ -384,7 +384,7 @@ func TestFlagServiceListAndFlagsetID(t *testing.T) {
 		assert.Len(t, instances, 2)
 		owners, err := svc.ListTeamOwners(ctx, fs.TeamID)
 		require.NoError(t, err)
-		assert.Equal(t, []string{"Actor"}, owners)
+		assert.Equal(t, []model.FlagOwner{{ID: actor.ID, Name: "Actor"}}, owners)
 	})
 
 	t.Run("flagset id for flag", func(t *testing.T) {

@@ -467,7 +467,7 @@ func TestFlagRepoListByTeamFiltersAndPaging(t *testing.T) {
 
 	got, _ = list(model.TeamFlagFilters{FlagsetID: &stg.ID})
 	assert.Equal(t, []string{"bool_flag", "json_flag"}, got)
-	got, _ = list(model.TeamFlagFilters{Owner: ptr("Alice")})
+	got, _ = list(model.TeamFlagFilters{Owner: &alice.ID})
 	assert.Equal(t, []string{"checkout_int", "json_flag"}, got)
 	got, _ = list(model.TeamFlagFilters{Unassigned: true})
 	assert.Equal(t, []string{"bool_flag", "checkout_float"}, got)
@@ -477,7 +477,7 @@ func TestFlagRepoListByTeamFiltersAndPaging(t *testing.T) {
 
 	owners, err := repo.ListTeamOwners(ctx, team.ID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Alice"}, owners)
+	assert.Equal(t, []model.FlagOwner{{ID: alice.ID, Name: "Alice"}}, owners)
 
 	// Sorting: pin updated_at so the recency order is deterministic.
 	for name, ago := range map[string]string{"bool_flag": "0", "checkout_int": "1", "checkout_float": "2", "json_flag": "3"} {
@@ -540,7 +540,7 @@ func TestFlagRepoListByTeamScoping(t *testing.T) {
 		{name: "only the team's flags", want: []string{"mine", "no-version"}},
 		{name: "unknown type finds version-less flags", filters: model.TeamFlagFilters{Type: new("unknown")},
 			want: []string{"no-version"}},
-		{name: "another team's owner matches nothing", filters: model.TeamFlagFilters{Owner: new("Bob")}},
+		{name: "another team's owner matches nothing", filters: model.TeamFlagFilters{Owner: &bob.ID}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -557,7 +557,57 @@ func TestFlagRepoListByTeamScoping(t *testing.T) {
 
 	owners, err := repo.ListTeamOwners(ctx, team.ID)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Alice"}, owners)
+	assert.Equal(t, []model.FlagOwner{{ID: alice.ID, Name: "Alice"}}, owners)
+}
+
+// Owners are users, not names: two authors named "Alice" stay two owners, and
+// one with an empty name is still an owner, not unassigned.
+func TestFlagRepoOwnersKeyedByUserID(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagRepo(db)
+	ctx := t.Context()
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+	alice1 := testutil.SeedUser(t, db, "alice1@acme.com", "Alice", false)
+	alice2 := testutil.SeedUser(t, db, "alice2@acme.com", "Alice", false)
+	nameless := testutil.SeedUser(t, db, "nameless@acme.com", "", false)
+	testutil.SeedFlag(t, db, fs.ID, "a1", nil, &alice1.ID)
+	testutil.SeedFlag(t, db, fs.ID, "a2", nil, &alice2.ID)
+	testutil.SeedFlag(t, db, fs.ID, "blank", nil, &nameless.ID)
+	testutil.SeedFlag(t, db, fs.ID, "none", nil, nil)
+
+	tests := []struct {
+		name    string
+		filters model.TeamFlagFilters
+		want    []string
+	}{
+		{"first Alice", model.TeamFlagFilters{Owner: &alice1.ID}, []string{"a1"}},
+		{"second Alice", model.TeamFlagFilters{Owner: &alice2.ID}, []string{"a2"}},
+		{"empty name is an owner", model.TeamFlagFilters{Owner: &nameless.ID}, []string{"blank"}},
+		{"unassigned", model.TeamFlagFilters{Unassigned: true}, []string{"none"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.filters.Sort = "name"
+			items, _, err := repo.ListByTeam(ctx, team.ID, tt.filters)
+			require.NoError(t, err)
+			got := make([]string, 0, len(items))
+			for _, it := range items {
+				got = append(got, it.Name)
+				if it.Name != "none" {
+					require.NotNil(t, it.OwnerID)
+					assert.Equal(t, *tt.filters.Owner, *it.OwnerID)
+				}
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+
+	owners, err := repo.ListTeamOwners(ctx, team.ID)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []model.FlagOwner{
+		{ID: nameless.ID, Name: ""}, {ID: alice1.ID, Name: "Alice"}, {ID: alice2.ID, Name: "Alice"},
+	}, owners)
 }
 
 // TestFlagRepoFlagsetDeleteRacingSave: a flagset delete that starts while a
