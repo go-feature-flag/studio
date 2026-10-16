@@ -25,15 +25,12 @@ func TestFlagsetRepoCRUD(t *testing.T) {
 	created, err := repo.Create(ctx, team.ID, &model.CreateFlagsetRequest{
 		Name:                        "prod",
 		Description:                 "production",
-		PollingIntervalMs:           new(3000),
 		EvaluationContextEnrichment: json.RawMessage(`{"env":"prod"}`),
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, created.ID)
 	assert.Equal(t, "prod", created.Name)
 	assert.Equal(t, 0, created.APIKeyCount)
-	require.NotNil(t, created.PollingIntervalMs)
-	assert.Equal(t, 3000, *created.PollingIntervalMs)
 	assert.JSONEq(t, `{"env":"prod"}`, string(created.EvaluationContextEnrichment))
 
 	got, err := repo.GetByID(ctx, created.ID)
@@ -61,7 +58,9 @@ func TestFlagsetRepoCRUD(t *testing.T) {
 
 	// Go's JSON accepts a lone surrogate, Postgres jsonb rejects it (22P02):
 	// that must surface as the pg error, not as not found.
-	_, err = repo.Update(ctx, created.ID, &model.UpdateFlagsetRequest{Notifiers: json.RawMessage(`{"x":"\ud800"}`)})
+	_, err = repo.Update(ctx, created.ID, &model.UpdateFlagsetRequest{
+		EvaluationContextEnrichment: json.RawMessage(`{"x":"\ud800"}`),
+	})
 	var pgErr *pgconn.PgError
 	require.ErrorAs(t, err, &pgErr)
 	assert.Equal(t, "22P02", pgErr.Code)
@@ -131,8 +130,10 @@ func TestFlagsetRepoNameTaken(t *testing.T) {
 	_, err = repo.Create(ctx, testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Globex").ID, "B").ID,
 		&model.CreateFlagsetRequest{Name: "prod"})
 	assert.NoError(t, err, "same name in another team is fine")
-	_, err = repo.Create(ctx, team.ID, &model.CreateFlagsetRequest{Name: "x", Notifiers: json.RawMessage(`{`)})
-	assert.ErrorContains(t, err, "invalid flagset JSON setting: notifiers:")
+	_, err = repo.Create(ctx, team.ID, &model.CreateFlagsetRequest{
+		Name: "x", DefaultTestingEvaluationContext: json.RawMessage(`{`),
+	})
+	assert.ErrorContains(t, err, "invalid flagset JSON setting: defaultTestingEvaluationContext:")
 }
 
 func TestFlagsetRepoAPIKeys(t *testing.T) {
@@ -211,49 +212,6 @@ func TestFlagsetRepoInsertAPIKeyDeletedFlagset(t *testing.T) {
 		require.NoError(t, tx.Commit(ctx))
 		assert.ErrorIs(t, <-done, repository.ErrNotFound)
 	})
-}
-
-func TestFlagsetRepoUpdateNullable(t *testing.T) {
-	db := testutil.StartPostgres(t)
-	repo := repository.NewFlagsetRepo(db)
-	ctx := t.Context()
-	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
-	yaml, json := model.FileFormatYAML, model.FileFormatJSON
-
-	tests := []struct {
-		name       string
-		req        model.UpdateFlagsetRequest
-		wantPoll   *int
-		wantFormat *model.FileFormat
-	}{
-		{name: "absent leaves unchanged", wantPoll: new(1000), wantFormat: &yaml},
-		{
-			name: "null resets to default",
-			req: model.UpdateFlagsetRequest{
-				PollingIntervalMs: model.Nullable[int]{Set: true},
-				FileFormat:        model.Nullable[model.FileFormat]{Set: true},
-			},
-		},
-		{
-			name: "value sets",
-			req: model.UpdateFlagsetRequest{
-				PollingIntervalMs: model.Nullable[int]{Set: true, Value: new(5000)},
-				FileFormat:        model.Nullable[model.FileFormat]{Set: true, Value: &json},
-			},
-			wantPoll: new(5000), wantFormat: &json,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fs, err := repo.Create(ctx, team.ID, &model.CreateFlagsetRequest{
-				Name: tt.name, PollingIntervalMs: new(1000), FileFormat: &yaml})
-			require.NoError(t, err)
-			got, err := repo.Update(ctx, fs.ID, &tt.req)
-			require.NoError(t, err)
-			assert.Equal(t, tt.wantPoll, got.PollingIntervalMs)
-			assert.Equal(t, tt.wantFormat, got.FileFormat)
-		})
-	}
 }
 
 func TestFlagsetRepoQueryErrors(t *testing.T) {

@@ -2831,35 +2831,9 @@ const docTemplate = `{
                 "evaluationContextEnrichment": {
                     "type": "object"
                 },
-                "exporters": {
-                    "type": "object"
-                },
-                "fileFormat": {
-                    "enum": [
-                        "yaml",
-                        "json",
-                        "toml"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/model.FileFormat"
-                        }
-                    ],
-                    "example": "yaml"
-                },
                 "name": {
                     "type": "string",
                     "example": "production"
-                },
-                "notifiers": {
-                    "type": "object"
-                },
-                "pollingIntervalMs": {
-                    "type": "integer",
-                    "example": 60000
-                },
-                "retrievers": {
-                    "type": "object"
                 }
             }
         },
@@ -2952,19 +2926,6 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
-        },
-        "model.FileFormat": {
-            "type": "string",
-            "enum": [
-                "yaml",
-                "json",
-                "toml"
-            ],
-            "x-enum-varnames": [
-                "FileFormatYAML",
-                "FileFormatJSON",
-                "FileFormatTOML"
-            ]
         },
         "model.Flag": {
             "type": "object",
@@ -3141,12 +3102,6 @@ const docTemplate = `{
                     "description": "EvaluationContextEnrichment is a free-form object merged into every\nevaluation context for flags in this flagset (enrichment value wins on\nkey collision).",
                     "type": "object"
                 },
-                "exporters": {
-                    "type": "object"
-                },
-                "fileFormat": {
-                    "$ref": "#/definitions/model.FileFormat"
-                },
                 "flagCount": {
                     "type": "integer"
                 },
@@ -3155,15 +3110,6 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
-                },
-                "notifiers": {
-                    "type": "object"
-                },
-                "pollingIntervalMs": {
-                    "type": "integer"
-                },
-                "retrievers": {
-                    "type": "object"
                 },
                 "teamId": {
                     "type": "string"
@@ -3477,30 +3423,8 @@ const docTemplate = `{
                 "evaluationContextEnrichment": {
                     "type": "object"
                 },
-                "exporters": {
-                    "type": "object"
-                },
-                "fileFormat": {
-                    "type": "string",
-                    "enum": [
-                        "yaml",
-                        "json",
-                        "toml"
-                    ],
-                    "example": "yaml"
-                },
                 "name": {
                     "type": "string"
-                },
-                "notifiers": {
-                    "type": "object"
-                },
-                "pollingIntervalMs": {
-                    "type": "integer",
-                    "example": 60000
-                },
-                "retrievers": {
-                    "type": "object"
                 }
             }
         },
