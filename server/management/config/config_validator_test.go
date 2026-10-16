@@ -52,7 +52,7 @@ func TestConfigValidate(t *testing.T) {
 		{"unknown log level", func(c *Config) { c.Log.Level = "verbose" }, "log.level"},
 		{"unknown log format", func(c *Config) { c.Log.Format = "xml" }, "log.format"},
 		{"trusted proxies as CIDR ranges", func(c *Config) {
-			c.Server.TrustedProxies = []string{"10.0.0.0/8", " 2001:db8::/32 "}
+			c.Server.TrustedProxies = []string{"10.0.0.0/8", "2001:db8::/32"}
 		}, ""},
 		{"trusted proxies lists every bad entry", func(c *Config) {
 			c.Server.TrustedProxies = []string{"10.0.0.1", "10.0.0.0/8", "nope"}

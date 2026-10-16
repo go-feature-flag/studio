@@ -42,7 +42,7 @@ func NewAuthService(
 	v := provider.Verifier(&oidc.Config{ClientID: cfg.OIDC.ClientID})
 	adm := make(map[string]struct{}, len(cfg.Auth.AdminEmails))
 	for _, e := range cfg.Auth.AdminEmails {
-		adm[strings.ToLower(strings.TrimSpace(e))] = struct{}{}
+		adm[strings.ToLower(e)] = struct{}{}
 	}
 	return &AuthService{cfg: cfg, users: users, companies: companies, oauth: o, verifier: v, adminEmails: adm}, nil
 }

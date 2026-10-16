@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
@@ -64,7 +65,7 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 		DecoderConfig: &mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
-				mapstructure.StringToSliceHookFunc(","),
+				splitList,
 				mapstructure.TextUnmarshallerHookFunc()),
 			WeaklyTypedInput: true,
 		},
@@ -72,6 +73,22 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 	return &out, nil
+}
+
+// splitList decodes a comma-separated string (an env var) into a list, trimming
+// each item and dropping empty ones: "openid, email," is [openid email], so
+// " email" never reaches the IdP and "a@x, b@x" matches both admins.
+func splitList(from, to reflect.Type, data any) (any, error) {
+	if from.Kind() != reflect.String || to.Kind() != reflect.Slice {
+		return data, nil
+	}
+	var items []string
+	for item := range strings.SplitSeq(data.(string), ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			items = append(items, item)
+		}
+	}
+	return items, nil
 }
 
 // structToMap returns default values keyed using the same lowercase scheme

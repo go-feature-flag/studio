@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,6 +163,19 @@ func TestLoad(t *testing.T) {
 				c.Auth.AdminEmails = []string{"c@example.test", "d@example.test"}
 			},
 		},
+		{
+			name: "env lists are trimmed and skip empty items",
+			env: map[string]string{
+				"GOFF_MGMT_OIDC_SCOPES":           "openid, email ,, groups,",
+				"GOFF_MGMT_AUTH_ADMINEMAILS":      " a@example.test, b@example.test",
+				"GOFF_MGMT_SERVER_TRUSTEDPROXIES": "10.0.0.0/8 , 172.16.0.0/12",
+			},
+			want: func(c *Config) {
+				c.OIDC.Scopes = []string{"openid", "email", "groups"}
+				c.Auth.AdminEmails = []string{"a@example.test", "b@example.test"}
+				c.Server.TrustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12"}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -194,4 +209,26 @@ func TestLoad(t *testing.T) {
 			assert.Equal(t, want, *cfg)
 		})
 	}
+}
+
+// FuzzSplitList checks env list decoding on arbitrary input: no empty,
+// space-padded or comma-holding item, and decoding is idempotent.
+func FuzzSplitList(f *testing.F) {
+	for _, seed := range []string{"", "openid", "openid, email ,, groups,", " a@x, b@x", ",", " , "} {
+		f.Add(seed)
+	}
+	strType, sliceType := reflect.TypeFor[string](), reflect.TypeFor[[]string]()
+	f.Fuzz(func(t *testing.T, in string) {
+		out, err := splitList(strType, sliceType, in)
+		require.NoError(t, err)
+		items, _ := out.([]string)
+		for _, item := range items {
+			assert.NotEmpty(t, item)
+			assert.Equal(t, strings.TrimSpace(item), item)
+			assert.NotContains(t, item, ",")
+		}
+		again, err := splitList(strType, sliceType, strings.Join(items, ","))
+		require.NoError(t, err)
+		assert.Equal(t, items, again)
+	})
 }

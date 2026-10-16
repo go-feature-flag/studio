@@ -36,7 +36,7 @@ func (s ServerConfig) TrustedProxyNets() ([]*net.IPNet, error) {
 	nets := make([]*net.IPNet, 0, len(s.TrustedProxies))
 	var bad []string
 	for _, r := range s.TrustedProxies {
-		_, n, err := net.ParseCIDR(strings.TrimSpace(r))
+		_, n, err := net.ParseCIDR(r)
 		if err != nil {
 			bad = append(bad, fmt.Sprintf("%q", r))
 			continue

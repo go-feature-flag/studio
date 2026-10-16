@@ -13,7 +13,6 @@ _Nothing open._
 
 ## P1 — Correctness bugs
 
-- [ ] **[Config] Trim OIDC scopes from comma-separated env.** `StringToSliceHookFunc(",")` keeps surrounding spaces, so `GOFF_MGMT_OIDC_SCOPES="openid, email"` sends `" email"` to the IdP, and `"profile, openid"` fails the `openid` check in `Validate()`. Admin emails are already trimmed in `NewAuthService`; trimming in the loader hook covers every list.
 - [ ] **[Auth] Decide on session revocation.** Logout only clears the cookie: a copied JWT stays valid until `exp` (a deleted user is rejected on the next request, and roles are re-read from the DB). Document it, or add a revocation list or short-lived sessions with refresh.
 - [ ] **[Handlers] Test cross-tenant handler calls.** Company `UpdateMember`/`RemoveMember` with a uid from another company are untested at handler and route level; `AddMember` with another company's user and a duplicate name on `CreateTeam` (409) are only covered by service tests. Each should answer 404 (409 for the duplicate) and leave the other tenant's user unchanged. Malformed uids are already covered (404, `api/routes_test.go`).
 - [ ] **[Services] Let a flagset update clear its JSON settings.** `null` for `evaluationContextEnrichment` or `defaultTestingEvaluationContext` passes validation but the repo's `COALESCE` keeps the old value, so the client gets 200 and nothing changes. Tell an absent key from an explicit `null` (a small `Nullable[T]` wrapper with `UnmarshalJSON`), or reject `null` on update.

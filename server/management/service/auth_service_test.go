@@ -327,11 +327,11 @@ func TestNewAuthService(t *testing.T) {
 
 	cfg := config.Config{
 		OIDC: config.OIDCConfig{Issuer: issuer, ClientID: "cid", RedirectURL: "http://app/cb", Scopes: []string{"openid"}},
-		Auth: config.AuthConfig{AdminEmails: []string{" Root@Acme.com "}},
+		Auth: config.AuthConfig{AdminEmails: []string{"Root@Acme.com"}},
 	}
 	s, err := NewAuthService(t.Context(), cfg, nil, nil)
 	require.NoError(t, err)
-	assert.True(t, s.isAdminEmail("root@acme.com"), "admin emails are trimmed and case-insensitive")
+	assert.True(t, s.isAdminEmail("root@acme.com"), "admin emails are case-insensitive")
 	assert.True(t, strings.HasPrefix(s.AuthURL("st", "v", "n"), issuer+"/auth?"))
 
 	cfg.OIDC.Issuer = "http://127.0.0.1:1"
