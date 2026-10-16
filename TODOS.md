@@ -9,7 +9,7 @@ Known follow-ups, most important first. Each item is tagged with the area it tou
 
 ## P0 — Security holes and deploy blockers
 
-- [ ] **[Database] Document the Postgres 18 minimum.** `uuidv7()` and `VIRTUAL` generated columns need PG 18 and `JSON_EXISTS` needs PG 17. Only `compose.yaml` and the test harness pin `postgres:18`; the README says nothing, the config accepts any DSN, and an older server fails at migration time with an obscure error.
+_Nothing open._
 
 ## P1 — Correctness bugs
 

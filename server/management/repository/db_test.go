@@ -63,6 +63,29 @@ func TestNewDB(t *testing.T) {
 	}
 }
 
+func TestRequireServerVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		num     int
+		version string
+		wantErr string
+	}{
+		{"18.0", 180000, "18.0", ""},
+		{"later major", 190002, "19.2 (Debian 19.2-1)", ""},
+		{"17 lacks uuidv7 and virtual columns", 170006, "17.6", "PostgreSQL 18 or later is required, found 17.6"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := repository.RequireServerVersion(tt.num, tt.version)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
 // A malformed id makes Postgres fail the uuid cast (22P02); lookups must report
 // it as not found, not as a server error.
 func TestLookupMalformedIDIsNotFound(t *testing.T) {
