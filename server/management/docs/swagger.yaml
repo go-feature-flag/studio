@@ -746,7 +746,12 @@ paths:
       responses:
         "204":
           description: No Content
-      summary: Logout (clears the session cookie; no session required)
+        "500":
+          description: sessions not revoked; the cookie is still cleared
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Logout (ends every session of the user and clears the cookie; no session
+        required)
       tags:
       - auth
   /auth/me:

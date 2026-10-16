@@ -91,15 +91,22 @@ func (h *AuthHandler) Callback(c *echo.Context) error {
 }
 
 // Logout godoc
-// @Summary  Logout (clears the session cookie; no session required)
+// @Summary  Logout (ends every session of the user and clears the cookie; no session required)
 // @Tags     auth
 // @Produce  json
 // @Success  204 "No Content"
+// @Failure  500 {object} model.APIResponse "sessions not revoked; the cookie is still cleared"
 // @Router   /auth/logout [post]
 func (h *AuthHandler) Logout(c *echo.Context) error {
 	session := h.cookie(middleware.SessionCookieName, "") //nolint:gosec // Secure: see cookie()
 	session.MaxAge = -1
 	c.SetCookie(session)
+	if ck, err := c.Cookie(middleware.SessionCookieName); err == nil && ck.Value != "" {
+		if err := h.auth.Logout(c.Request().Context(), ck.Value); err != nil {
+			slog.ErrorContext(c.Request().Context(), "failed to revoke sessions", "error", err)
+			return internal(c, "failed to revoke sessions")
+		}
+	}
 	return noContent(c)
 }
 

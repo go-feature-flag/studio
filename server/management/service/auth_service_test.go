@@ -315,6 +315,43 @@ func TestAuthenticateRevocation(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnauthenticated)
 }
 
+// Logout ends every session of the user (all devices, copied tokens
+// included); a new login works again, and a stale token can't log it out.
+func TestLogoutRevokesSessions(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	users := repository.NewUserRepo(db)
+	s := authServiceForJWT(strings.Repeat("x", 32), time.Hour)
+	s.users = users
+	ctx := t.Context()
+	u := testutil.SeedUser(t, db, "u@acme.com", "U", false)
+	issue := func() string {
+		t.Helper()
+		cur, err := users.GetByID(ctx, u.ID)
+		require.NoError(t, err)
+		tok, err := s.IssueJWT(cur)
+		require.NoError(t, err)
+		return tok
+	}
+	laptop, phone := issue(), issue()
+
+	require.NoError(t, s.Logout(ctx, laptop))
+	for _, tok := range []string{laptop, phone} {
+		_, err := s.Authenticate(ctx, tok)
+		assert.ErrorIs(t, err, ErrUnauthenticated)
+		assert.ErrorContains(t, err, "session revoked")
+	}
+
+	fresh := issue()
+	require.NoError(t, s.Logout(ctx, laptop), "a revoked token is a no-op")
+	_, err := s.Authenticate(ctx, fresh)
+	assert.NoError(t, err, "a stale token doesn't revoke the new session")
+	assert.NoError(t, s.Logout(ctx, "garbage"))
+
+	ctxDone, cancel := context.WithCancel(ctx)
+	cancel()
+	assert.ErrorIs(t, s.Logout(ctxDone, fresh), context.Canceled)
+}
+
 func TestNewAuthService(t *testing.T) {
 	var issuer string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

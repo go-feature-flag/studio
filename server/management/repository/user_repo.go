@@ -15,13 +15,23 @@ type UserRepo struct{ db *DB }
 func NewUserRepo(db *DB) *UserRepo { return &UserRepo{db: db} }
 
 const userCols = `id, email, name, avatar_url, oidc_sub, is_super_admin, company_id, company_role,
-	created_at, updated_at, last_login_at`
+	created_at, updated_at, last_login_at, session_version`
 
 func scanUser(row pgx.Row, u *model.User) error {
 	return row.Scan(
 		&u.ID, &u.Email, &u.Name, &u.AvatarURL, &u.OIDCSub, &u.IsSuperAdmin,
-		&u.CompanyID, &u.CompanyRole, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt,
+		&u.CompanyID, &u.CompanyRole, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &u.SessionVersion,
 	)
+}
+
+// RevokeSessions invalidates every session of the user issued at version, the
+// current one. A stale version changes nothing, so an already-revoked token
+// can't log the user out again.
+func (r *UserRepo) RevokeSessions(ctx context.Context, userID string, version int) error {
+	_, err := r.db.Pool.Exec(ctx,
+		`UPDATE users SET session_version = session_version + 1 WHERE id = $1 AND session_version = $2`,
+		userID, version)
+	return err
 }
 
 func (r *UserRepo) GetByID(ctx context.Context, id string) (*model.User, error) {

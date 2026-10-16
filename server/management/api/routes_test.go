@@ -277,6 +277,18 @@ func TestRoutesAuditHidesOtherTeams(t *testing.T) {
 	assert.Equal(t, 0, total(outsider), "other company")
 }
 
+// Logout revokes the session itself, not just the cookie: replaying the same
+// token afterwards is refused.
+func TestRoutesLogoutRevokesSession(t *testing.T) {
+	e, auth := routesServer(t)
+	f := routesSeed(t, auth)
+
+	require.Equal(t, 200, f.do(e, "GET", "/api/v1/auth/me", viewer, "").Code)
+	require.Equal(t, 204, f.do(e, "POST", "/api/v1/auth/logout", viewer, "").Code)
+	assert.Equal(t, 401, f.do(e, "GET", "/api/v1/auth/me", viewer, "").Code)
+	assert.Equal(t, 200, f.do(e, "GET", "/api/v1/auth/me", editor, "").Code, "other users keep their session")
+}
+
 // A cross-site browser write is rejected before it reaches the handler, even
 // with a valid session cookie.
 func TestRoutesCrossSiteWriteRejected(t *testing.T) {

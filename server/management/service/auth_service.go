@@ -69,6 +69,9 @@ type Claims struct {
 	// the current DB row and adminEmails config on every request, so a
 	// demotion takes effect immediately instead of when the session expires.
 	IsSuperAdmin bool `json:"-"`
+	// SessionVersion must match the user's: logout bumps it, revoking every
+	// session issued before, copied tokens included.
+	SessionVersion int `json:"sv"`
 	jwt.RegisteredClaims
 }
 
@@ -103,9 +106,21 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*Claims, 
 	if u == nil {
 		return nil, fmt.Errorf("%w: user not found", ErrUnauthenticated)
 	}
+	if c.SessionVersion != u.SessionVersion {
+		return nil, fmt.Errorf("%w: session revoked", ErrUnauthenticated)
+	}
 	c.Email, c.Name = u.Email, u.Name
 	c.IsSuperAdmin = u.IsSuperAdmin && s.isAdminEmail(u.Email)
 	return c, nil
+}
+
+// Logout revokes every session of the token's user. An invalid, expired or
+// already revoked token has nothing left to revoke.
+func (s *AuthService) Logout(ctx context.Context, token string) error {
+	if c, err := s.ParseJWT(token); err == nil {
+		return s.users.RevokeSessions(ctx, c.UserID, c.SessionVersion)
+	}
+	return nil
 }
 
 // Exchange completes the login: it redeems the code with the PKCE verifier,
@@ -205,9 +220,10 @@ func (s *AuthService) joinDefaultCompany(ctx context.Context, u *model.User) err
 func (s *AuthService) IssueJWT(u *model.User) (string, error) {
 	now := time.Now()
 	c := Claims{
-		UserID: u.ID,
-		Email:  u.Email,
-		Name:   u.Name,
+		UserID:         u.ID,
+		Email:          u.Email,
+		Name:           u.Name,
+		SessionVersion: u.SessionVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.Auth.SessionMaxAge)),

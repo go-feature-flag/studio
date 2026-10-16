@@ -123,10 +123,16 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Logout (clears the session cookie; no session required)",
+                "summary": "Logout (ends every session of the user and clears the cookie; no session required)",
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "500": {
+                        "description": "sessions not revoked; the cookie is still cleared",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
