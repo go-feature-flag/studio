@@ -221,3 +221,42 @@ func TestLoginIsRateLimited(t *testing.T) {
 	req.RemoteAddr = "198.51.100.7:1234"
 	assert.NotEqual(t, http.StatusTooManyRequests, platformServe(e, req).Code)
 }
+
+// Behind a reverse proxy the login limit must key on the client, read from
+// X-Forwarded-For only when the direct peer is a configured trusted proxy.
+func TestLoginRateLimitBehindProxy(t *testing.T) {
+	const proxy = "10.0.0.5:4000"
+	trusted := config.Config{Server: config.ServerConfig{TrustedProxies: []string{"10.0.0.0/8"}}}
+	tests := []struct {
+		name     string
+		cfg      config.Config
+		peer     string // socket address of every request
+		drainXFF string // client of the 5 requests that use up a bucket
+		probeXFF string // client of the 6th request
+		want429  bool
+	}{
+		{"trusted proxy: another client has its own bucket", trusted, proxy, "198.51.100.1", "198.51.100.2", false},
+		{"trusted proxy: the same client is limited", trusted, proxy, "198.51.100.1", "198.51.100.1", true},
+		{"no trusted proxies: clients share the proxy's bucket", config.Config{}, proxy,
+			"198.51.100.1", "198.51.100.2", true},
+		{"untrusted peer can't pick its key with the header", trusted, "203.0.113.9:4000",
+			"198.51.100.1", "198.51.100.2", true},
+		{"private peer outside the ranges isn't trusted", trusted, "192.168.1.1:4000",
+			"198.51.100.1", "198.51.100.2", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := platformServer(tt.cfg)
+			get := func(xff string) int {
+				req := httptest.NewRequest(http.MethodGet, "/auth/login", nil)
+				req.RemoteAddr = tt.peer
+				req.Header.Set(echo.HeaderXForwardedFor, xff)
+				return platformServe(e, req).Code
+			}
+			for range 5 {
+				require.NotEqual(t, http.StatusTooManyRequests, get(tt.drainXFF))
+			}
+			assert.Equal(t, tt.want429, get(tt.probeXFF) == http.StatusTooManyRequests)
+		})
+	}
+}

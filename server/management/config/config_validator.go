@@ -12,6 +12,9 @@ func (c *Config) Validate() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		errs = append(errs, errors.New("server.port must be between 1 and 65535"))
 	}
+	if _, err := c.Server.TrustedProxyNets(); err != nil {
+		errs = append(errs, err)
+	}
 	if c.Server.ShutdownTimeout <= 0 {
 		errs = append(errs, errors.New("server.shutdownTimeout must be positive"))
 	}

@@ -151,8 +151,10 @@ func TestLoad(t *testing.T) {
 				"GOFF_MGMT_AUTH_SESSIONMAXAGE":     "2h",
 				"GOFF_MGMT_OIDC_SCOPES":            "openid,email,groups",
 				"GOFF_MGMT_AUTH_ADMINEMAILS":       "c@example.test,d@example.test",
+				"GOFF_MGMT_SERVER_TRUSTEDPROXIES":  "10.0.0.0/8,172.16.0.0/12",
 			},
 			want: func(c *Config) {
+				c.Server.TrustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12"}
 				c.Server.ShutdownTimeout = 15 * time.Second
 				c.Auth.SessionMaxAge = 2 * time.Hour
 				c.OIDC.Scopes = []string{"openid", "email", "groups"}

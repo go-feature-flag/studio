@@ -40,6 +40,7 @@ type Services struct {
 func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo {
 	e := echo.New()
 	e.Logger = log
+	e.IPExtractor = ipExtractor(cfg.Server)
 	// First, so the route reaches otelhttp before any middleware swaps the request.
 	e.Use(middleware.RouteTelemetry())
 	// Tag every log line written through c.Logger() with the request id.
@@ -100,9 +101,8 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	})
 
 	// Login is the public surface and each callback costs an OAuth exchange.
-	// Keyed by RealIP, i.e. the socket address: behind a reverse proxy every
-	// client shares the proxy's IP, so this becomes a global 5 req/s limit
-	// (configure e.IPExtractor for trusted proxies if that bites).
+	// Keyed by RealIP: behind a reverse proxy, set server.trustedProxies or
+	// every client shares the proxy's IP and this becomes a global 5 req/s limit.
 	loginLimit := rateLimit(5, nil)
 	e.GET("/auth/login", h.Auth.Login, loginLimit)
 	e.GET("/auth/callback", h.Auth.Callback, loginLimit)
@@ -145,6 +145,22 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	api.GET("/audit", h.Audit.List)
 
 	return e
+}
+
+// ipExtractor resolves c.RealIP(). Without trusted proxies it is the socket
+// address (nil: echo's default). With them, the nearest X-Forwarded-For hop
+// outside those ranges, so a client can't spoof its IP by sending the header:
+// echo's own trust of private, loopback and link-local peers is turned off.
+func ipExtractor(cfg config.ServerConfig) echo.IPExtractor {
+	nets, _ := cfg.TrustedProxyNets() // Validate already rejected bad entries
+	if len(nets) == 0 {
+		return nil
+	}
+	opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false)}
+	for _, n := range nets {
+		opts = append(opts, echo.TrustIPRange(n))
+	}
+	return echo.ExtractIPFromXFFHeader(opts...)
 }
 
 // rateLimit caps each identifier (default: client IP) at perSec requests per

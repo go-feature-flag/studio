@@ -51,6 +51,12 @@ func TestConfigValidate(t *testing.T) {
 		{"zero session max age", func(c *Config) { c.Auth.SessionMaxAge = 0 }, "auth.sessionMaxAge"},
 		{"unknown log level", func(c *Config) { c.Log.Level = "verbose" }, "log.level"},
 		{"unknown log format", func(c *Config) { c.Log.Format = "xml" }, "log.format"},
+		{"trusted proxies as CIDR ranges", func(c *Config) {
+			c.Server.TrustedProxies = []string{"10.0.0.0/8", " 2001:db8::/32 "}
+		}, ""},
+		{"trusted proxies lists every bad entry", func(c *Config) {
+			c.Server.TrustedProxies = []string{"10.0.0.1", "10.0.0.0/8", "nope"}
+		}, `server.trustedProxies must be CIDR ranges (e.g. 10.0.0.0/8), got "10.0.0.1", "nope"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
