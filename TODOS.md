@@ -13,7 +13,6 @@ _Nothing open._
 
 ## P1 — Correctness bugs
 
-- [ ] **[Handlers] Test cross-tenant handler calls.** Company `UpdateMember`/`RemoveMember` with a uid from another company are untested at handler and route level; `AddMember` with another company's user and a duplicate name on `CreateTeam` (409) are only covered by service tests. Each should answer 404 (409 for the duplicate) and leave the other tenant's user unchanged. Malformed uids are already covered (404, `api/routes_test.go`).
 - [ ] **[Services] Let a flagset update clear its JSON settings.** `null` for `evaluationContextEnrichment` or `defaultTestingEvaluationContext` passes validation but the repo's `COALESCE` keeps the old value, so the client gets 200 and nothing changes. Tell an absent key from an explicit `null` (a small `Nullable[T]` wrapper with `UnmarshalJSON`), or reject `null` on update.
 - [ ] **[Flags] Key flag owners by user id.** `ListByTeam`'s `Owner` filter and `ListTeamOwners` use `users.name`, which isn't unique and defaults to `''`: two users named "Alice" collapse into one owner, and a user with an empty name shows up as owner `""` instead of unassigned. Filter on `fv.created_by` and return `{id, name}` pairs.
 - [ ] **[Config] Document that durations need a unit.** `shutdownTimeout: 30` in YAML means 30 nanoseconds, not 30 seconds, because mapstructure assigns a bare number straight onto `time.Duration`; `Validate()` only rejects `<= 0`. Spell the units out in the config reference, or reject sub-millisecond durations in `Validate()`.
