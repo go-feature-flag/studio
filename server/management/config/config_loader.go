@@ -40,12 +40,17 @@ func Load(flags *pflag.FlagSet) (*Config, error) {
 		}
 	}
 
-	envCb := func(s string) string {
-		s = strings.TrimPrefix(s, EnvPrefix)
-		s = strings.ToLower(s)
-		return strings.ReplaceAll(s, "_", ".")
+	// An empty var (Compose `VAR=${UNSET}`, `docker run -e VAR`) is skipped:
+	// WeaklyTypedInput would turn "" into a zero value that silently replaces
+	// the default (cookieSecure=false, maxConns=0).
+	envCb := func(key, value string) (string, any) {
+		if value == "" {
+			return "", nil
+		}
+		key = strings.ToLower(strings.TrimPrefix(key, EnvPrefix))
+		return strings.ReplaceAll(key, "_", "."), value
 	}
-	_ = k.Load(env.Provider(EnvPrefix, ".", envCb), nil)
+	_ = k.Load(env.ProviderWithValue(EnvPrefix, ".", envCb), nil)
 
 	if flags != nil {
 		_ = k.Load(posflag.Provider(flags, ".", k), nil)

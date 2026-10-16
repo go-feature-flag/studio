@@ -80,6 +80,25 @@ func TestLoad(t *testing.T) {
 			wantErr: "load config file",
 		},
 		{
+			name: "empty env vars keep defaults",
+			env: map[string]string{
+				"GOFF_MGMT_AUTH_COOKIESECURE": "",
+				"GOFF_MGMT_DB_MAXCONNS":       "",
+				"GOFF_MGMT_OIDC_SCOPES":       "",
+			},
+			want: func(c *Config) {},
+		},
+		{
+			name: "empty env var does not override config file",
+			yaml: camelCaseYAML,
+			env:  map[string]string{"GOFF_MGMT_AUTH_JWTSECRET": ""},
+			want: func(c *Config) {
+				c.Auth.CookieSecure = false
+				c.Auth.JWTSecret = "yamlsecret"
+				c.Auth.AdminEmails = []string{"yaml@example.test"}
+			},
+		},
+		{
 			name:    "invalid value fails unmarshal",
 			env:     map[string]string{"GOFF_MGMT_SERVER_PORT": "notaport"},
 			wantErr: "unmarshal config",
