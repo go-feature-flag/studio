@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,13 @@ func TestConfigValidate(t *testing.T) {
 		{"negative min conns", func(c *Config) { c.DB.MinConns = -1 }, "db.minConns"},
 		{"min conns above max", func(c *Config) { c.DB.MinConns = c.DB.MaxConns + 1 }, "db.minConns"},
 		{"zero conn max lifetime", func(c *Config) { c.DB.ConnMaxLifetime = 0 }, "db.connMaxLifetime"},
+		{"bare number shutdown timeout (30ns)", func(c *Config) { c.Server.ShutdownTimeout = 30 },
+			"server.shutdownTimeout must be at least 1s; durations need a unit, e.g. 30s, 5m or 1h"},
+		{"sub-second session max age", func(c *Config) { c.Auth.SessionMaxAge = 999 * time.Millisecond },
+			"auth.sessionMaxAge must be at least 1s"},
+		{"one second passes", func(c *Config) {
+			c.Server.ShutdownTimeout, c.DB.ConnMaxLifetime, c.Auth.SessionMaxAge = time.Second, time.Second, time.Second
+		}, ""},
 		{"scopes without openid", func(c *Config) { c.OIDC.Scopes = []string{"profile", "email"} }, "oidc.scopes"},
 		{"zero session max age", func(c *Config) { c.Auth.SessionMaxAge = 0 }, "auth.sessionMaxAge"},
 		{"unknown log level", func(c *Config) { c.Log.Level = "verbose" }, "log.level"},

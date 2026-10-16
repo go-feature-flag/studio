@@ -77,6 +77,12 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			// Loads as 30ns; Validate is what rejects it (see config_validator_test).
+			name: "bare number duration is nanoseconds",
+			yaml: "server:\n  shutdownTimeout: 30\n",
+			want: func(c *Config) { c.Server.ShutdownTimeout = 30 },
+		},
+		{
 			name:    "missing config file",
 			args:    []string{"--config", "/no/such/file.yaml"},
 			wantErr: "load config file",

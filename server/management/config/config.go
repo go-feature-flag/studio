@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// Config is the server configuration. Durations are Go duration strings with a
+// unit (30s, 5m, 1h): a bare number would be nanoseconds, which Validate
+// rejects.
 type Config struct {
 	Server ServerConfig `koanf:"server"`
 	DB     DBConfig     `koanf:"db"`
