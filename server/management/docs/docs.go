@@ -1544,7 +1544,7 @@ const docTemplate = `{
                 "tags": [
                     "flagsets"
                 ],
-                "summary": "List API keys for a flagset (team admin: the keys are secrets)",
+                "summary": "List API keys for a flagset (team editor: the keys are secrets)",
                 "parameters": [
                     {
                         "type": "string",

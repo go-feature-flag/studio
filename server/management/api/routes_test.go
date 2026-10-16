@@ -125,7 +125,8 @@ var routeCases = []struct {
 	{"DELETE", "/api/v1/flagsets/{flagset}", teamAdmin, "", 204},
 	{"DELETE", "/api/v1/flagsets/{flagset}", editor, "", 403},
 	{"GET", "/api/v1/flagsets/{flagset}/api-keys", teamAdmin, "", 200},
-	{"GET", "/api/v1/flagsets/{flagset}/api-keys", editor, "", 403}, // keys are secrets
+	{"GET", "/api/v1/flagsets/{flagset}/api-keys", editor, "", 200},
+	{"GET", "/api/v1/flagsets/{flagset}/api-keys", viewer, "", 403}, // keys are secrets
 	{"POST", "/api/v1/flagsets/{flagset}/api-keys", teamAdmin, `{"label":"k2"}`, 201},
 	{"POST", "/api/v1/flagsets/{flagset}/api-keys", editor, `{"label":"k2"}`, 403},
 	{"DELETE", "/api/v1/flagsets/{flagset}/api-keys/{key}", teamAdmin, "", 204},
