@@ -88,6 +88,7 @@ func structToMap(c Config) map[string]any {
 		"db.maxconns":            c.DB.MaxConns,
 		"db.minconns":            c.DB.MinConns,
 		"db.connmaxlifetime":     c.DB.ConnMaxLifetime,
+		"db.migrate":             c.DB.Migrate,
 		"oidc.scopes":            c.OIDC.Scopes,
 		"auth.sessionmaxage":     c.Auth.SessionMaxAge,
 		"auth.cookiesecure":      c.Auth.CookieSecure,

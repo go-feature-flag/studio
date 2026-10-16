@@ -1,6 +1,6 @@
 // Package testutil provides a shared Postgres test harness for the management
 // server's integration tests. It boots a throwaway Postgres container (via
-// testcontainers), applies the goose migrations, and hands out a clean
+// testcontainers), applies the embedded migrations, and hands out a clean
 // repository.DB to each test.
 //
 // Tests that call StartPostgres are skipped (not failed) when Docker is
@@ -11,19 +11,19 @@ package testutil
 
 import (
 	"context"
-	"database/sql"
+	"net"
+	"net/url"
 	"os"
-	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/config"
+	"github.com/gofeatureflag/flag-management-system/server/management/db/migrations"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
-	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver for goose migrations
-	"github.com/pressly/goose/v3"
+	"github.com/jackc/pgx/v5"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -108,39 +108,18 @@ func bootstrap() harness {
 		return harness{err: err}
 	}
 
-	if err := runMigrations(connStr); err != nil {
-		terminate()
-		return harness{err: err}
-	}
-
 	db, err := repository.NewDB(ctx, config.DBConfig{URL: connStr, MaxConns: 8, MinConns: 1})
 	if err != nil {
 		terminate()
 		return harness{err: err}
 	}
+	// The same embedded migrations the server applies at startup.
+	if _, err := migrations.Up(ctx, db.Pool); err != nil {
+		db.Close()
+		terminate()
+		return harness{err: err}
+	}
 	return harness{db: db, terminate: func() { db.Close(); terminate() }}
-}
-
-func runMigrations(connStr string) error {
-	sqlDB, err := sql.Open("pgx", connStr)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = sqlDB.Close() }()
-
-	goose.SetBaseFS(nil)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	goose.SetLogger(goose.NopLogger())
-	return goose.Up(sqlDB, migrationsDir())
-}
-
-// migrationsDir resolves the migrations directory relative to this source file
-// so it works regardless of the test's working directory.
-func migrationsDir() string {
-	_, thisFile, _, _ := runtime.Caller(0) //nolint:dogsled // only the file path is needed
-	return filepath.Join(filepath.Dir(thisFile), "..", "..", "db", "migrations")
 }
 
 func truncateAll(t *testing.T, db *repository.DB) {
@@ -149,4 +128,26 @@ func truncateAll(t *testing.T, db *repository.DB) {
 	if _, err := db.Pool.Exec(context.Background(), sql); err != nil {
 		t.Fatalf("truncate tables: %v", err)
 	}
+}
+
+// EmptyDatabase creates a fresh database, without any migration applied, in
+// the shared container and returns its URL. It is dropped when the test ends.
+func EmptyDatabase(t *testing.T) string {
+	t.Helper()
+	db := StartPostgres(t)
+	name := "empty_" + strings.ToLower(strings.NewReplacer("/", "_", " ", "_").Replace(t.Name()))
+	name = pgx.Identifier{name}.Sanitize()
+	if _, err := db.Pool.Exec(t.Context(), "CREATE DATABASE "+name); err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.Pool.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+	})
+	cfg := db.Pool.Config().ConnConfig.Copy()
+	u := url.URL{
+		Scheme: "postgres", User: url.UserPassword(cfg.User, cfg.Password),
+		Host: net.JoinHostPort(cfg.Host, strconv.Itoa(int(cfg.Port))), Path: "/" + strings.Trim(name, `"`),
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
 }

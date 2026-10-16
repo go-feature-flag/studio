@@ -117,26 +117,27 @@ func TestRun(t *testing.T) {
 
 	t.Run("serves until cancelled", func(t *testing.T) {
 		t.Setenv("GOFF_MGMT_OIDC_ISSUER", issuer)
-		port := freePort(t)
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan error, 1)
-		go func() { done <- run(ctx, []string{"--db.url", dbURL, "--server.port", fmt.Sprint(port)}) }()
-
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
-			if assert.NoError(c, err) {
-				_ = resp.Body.Close()
-				assert.Equal(c, http.StatusOK, resp.StatusCode)
-			}
-		}, 10*time.Second, 50*time.Millisecond)
-		cancel()
-		select {
-		case err := <-done:
-			assert.NoError(t, err)
-		case <-time.After(10 * time.Second):
-			t.Fatal("run did not return after cancel")
-		}
+		serveUntilHealthy(t, dbURL)
 	})
+
+	// A fresh database gets its schema at startup unless db.migrate is off.
+	for _, tt := range []struct {
+		migrate    string
+		wantSchema bool
+	}{{"", true}, {"false", false}} {
+		t.Run("empty database, GOFF_MGMT_DB_MIGRATE="+tt.migrate, func(t *testing.T) {
+			t.Setenv("GOFF_MGMT_OIDC_ISSUER", issuer)
+			t.Setenv("GOFF_MGMT_DB_MIGRATE", tt.migrate)
+			url := testutil.EmptyDatabase(t)
+			serveUntilHealthy(t, url)
+			conn, err := pgx.Connect(t.Context(), url)
+			require.NoError(t, err)
+			defer func() { _ = conn.Close(context.Background()) }()
+			var hasFlags bool
+			require.NoError(t, conn.QueryRow(t.Context(), `SELECT to_regclass('flags') IS NOT NULL`).Scan(&hasFlags))
+			assert.Equal(t, tt.wantSchema, hasFlags)
+		})
+	}
 
 	t.Run("port in use", func(t *testing.T) {
 		t.Setenv("GOFF_MGMT_OIDC_ISSUER", issuer)
@@ -147,6 +148,31 @@ func TestRun(t *testing.T) {
 		err = run(t.Context(), []string{"--db.url", dbURL, "--server.port", fmt.Sprint(port)})
 		assert.ErrorContains(t, err, "address already in use")
 	})
+}
+
+// serveUntilHealthy runs the server on dbURL until /health answers, then
+// stops it and checks it shut down cleanly.
+func serveUntilHealthy(t *testing.T, dbURL string) {
+	t.Helper()
+	port := freePort(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, []string{"--db.url", dbURL, "--server.port", fmt.Sprint(port)}) }()
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
+		if assert.NoError(c, err) {
+			_ = resp.Body.Close()
+			assert.Equal(c, http.StatusOK, resp.StatusCode)
+		}
+	}, 10*time.Second, 50*time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("run did not return after cancel")
+	}
 }
 
 // TestSeed keeps scripts/seed.sql loadable as the schema changes.

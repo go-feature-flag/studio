@@ -55,6 +55,9 @@ type DBConfig struct {
 	MaxConns        int32         `koanf:"maxConns"`
 	MinConns        int32         `koanf:"minConns"`
 	ConnMaxLifetime time.Duration `koanf:"connMaxLifetime"`
+	// Migrate applies the embedded schema migrations at startup (default). Turn
+	// it off to run them separately, e.g. with the goose CLI on db/migrations.
+	Migrate bool `koanf:"migrate"`
 }
 
 type OIDCConfig struct {
@@ -94,6 +97,7 @@ func Default() Config {
 			MaxConns:        20,
 			MinConns:        2,
 			ConnMaxLifetime: time.Hour,
+			Migrate:         true,
 		},
 		OIDC: OIDCConfig{
 			Scopes: []string{"openid", "profile", "email"},
