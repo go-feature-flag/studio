@@ -17,7 +17,7 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-_Nothing open._
+- [ ] **[Auth] Return a 4xx with a reason when the OIDC subject changed.** When an email is already bound to a different `oidc_sub`, `UpsertFromOIDC` returns `ErrIdentityMismatch`. The callback (`handler/auth.go`) only maps `ErrLoginRejected` to 400, so the user gets a 500 `{"message":"login failed"}` with nothing to act on. That happens in dev whenever the Keycloak container is recreated against an existing database. Map `ErrIdentityMismatch` to a 403 with a message saying the account is linked to another identity.
 
 ## P3 — Nice to have or blocked
 
