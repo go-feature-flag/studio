@@ -13,7 +13,6 @@ _Nothing open._
 
 ## P1 — Correctness bugs
 
-- [ ] **[Repository] Narrow `isNoRows`.** It also maps pg 22P02 (invalid input) to "not found", which is right for a malformed uuid in `GetByID` but hides a bad cast in the ~20 other queries that reuse it (on `Exec` errors in `SoftDelete`/`SetDisabled`/`softDeleteFlag` only the 22P02 branch can fire). Validate the uuid in the lookups and keep `isNoRows` to `pgx.ErrNoRows`.
 - [ ] **[Repository] Return `ErrNotFound` from lookups.** `UserRepo.GetByID`/`GetByEmail`, `CompanyRepo.GetByID`/`First`/`Membership`, `TeamRepo.GetByID`, `FlagsetRepo.GetByID`, `FlagRepo.GetByID`/`GetForUpdate` and `FlagVersionRepo.GetByFlagAndNumber` return `(nil, nil)` when nothing matches, and `TeamRepo.GetRole` returns `("", nil)`, so every caller must nil-check the result.
 - [ ] **[Services] Resolve a flag's team in one query for RBAC.** `RequireFlagRole`/`RequireFlagsetRole` call `FlagsetService.Get`, whose `flagsetCols` carries three `COUNT(*)` subqueries, only to read `team_id`: a flag request (including the rate-limited `/evaluate`) makes five queries before the handler. Flag writes and `Evaluate` load the flagset with its counts a second time. Add a repo lookup `SELECT fs.team_id FROM flags f JOIN flagsets fs … WHERE … deleted_at IS NULL` (and a flagset-only one).
 

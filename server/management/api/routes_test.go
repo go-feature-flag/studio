@@ -167,14 +167,15 @@ var routeCases = []struct {
 	{"POST", "/api/v1/flags/{flag}/versions/1/rollback", editor, `{}`, 201},
 	{"POST", "/api/v1/flags/{flag}/versions/1/rollback", viewer, `{}`, 403},
 
-	// Malformed ids are a client error, never a 500. Unknown flagsets and flags
-	// look like no access to non-super-admins (ids can't be probed).
+	// Malformed ids are a client error, never a 500: 404 for everyone, before
+	// any RBAC lookup (no row can match, so nothing can be probed).
 	{"GET", "/api/v1/companies/not-a-uuid", superAdmin, "", 404},
 	{"GET", "/api/v1/teams/not-a-uuid", superAdmin, "", 404},
-	{"GET", "/api/v1/flagsets/not-a-uuid", viewer, "", 403},
+	{"GET", "/api/v1/flagsets/not-a-uuid", viewer, "", 404},
 	{"GET", "/api/v1/flagsets/not-a-uuid", superAdmin, "", 404},
-	{"GET", "/api/v1/flags/not-a-uuid", viewer, "", 403},
+	{"GET", "/api/v1/flags/not-a-uuid", viewer, "", 404},
 	{"GET", "/api/v1/flags/not-a-uuid", superAdmin, "", 404},
+	{"GET", "/api/v1/flags/not-a-uuid", anon, "", 401}, // authentication first
 	{"GET", "/api/v1/flags/{flag}/versions/abc", viewer, "", 400},
 	{"PATCH", "/api/v1/teams/{team}/members/not-a-uuid", teamAdmin, `{"role":"viewer"}`, 404},
 	{"DELETE", "/api/v1/companies/{company}/members/not-a-uuid", companyAdmin, "", 404},

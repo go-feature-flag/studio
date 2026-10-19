@@ -9,7 +9,6 @@ import (
 	"github.com/exaring/otelpgx"
 	"github.com/gofeatureflag/flag-management-system/server/management/config"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -98,9 +97,7 @@ func (d *DB) execOne(ctx context.Context, q string, args ...any) error {
 	return nil
 }
 
-// isNoRows also covers a malformed id (pg 22P02, e.g. "abc" for a uuid column):
-// it can't match a row, so lookups report not found instead of a server error.
-func isNoRows(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.Is(err, pgx.ErrNoRows) || (errors.As(err, &pgErr) && pgErr.Code == "22P02")
-}
+// isNoRows reports a query that matched nothing. A malformed id (pg 22P02) is
+// not folded in: the API rejects those before any query (middleware.ValidIDs),
+// so a failed cast here is a bug to surface, not a missing row.
+func isNoRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }

@@ -170,8 +170,6 @@ func TestFlagsetRepoAPIKeys(t *testing.T) {
 	assert.Equal(t, "ci", deleted.Label)
 	_, err = repo.DeleteAPIKey(ctx, fs.ID, key.ID)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
-	_, err = repo.DeleteAPIKey(ctx, fs.ID, "abc")
-	assert.ErrorIs(t, err, repository.ErrNotFound, "malformed id")
 }
 
 func TestFlagsetRepoInsertAPIKeyDeletedFlagset(t *testing.T) {
@@ -276,8 +274,6 @@ func TestFlagsetRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.ListAPIKeys(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
-
-	assert.ErrorIs(t, repo.SoftDelete(t.Context(), "not-a-uuid"), repository.ErrNotFound)
 }
 
 func TestFlagsetRepoCreateWithAPIKey(t *testing.T) {

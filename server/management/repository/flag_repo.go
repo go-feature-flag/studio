@@ -303,9 +303,6 @@ func (r *FlagRepo) SetDisabled(ctx context.Context, tx pgx.Tx, flagID string, di
 	tag, err := exec(ctx,
 		`UPDATE flags SET disabled = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID, disabled)
 	if err != nil {
-		if isNoRows(err) {
-			return ErrNotFound
-		}
 		return err
 	}
 	if tag.RowsAffected() == 0 {
@@ -329,9 +326,6 @@ func softDeleteFlag(ctx context.Context, tx pgx.Tx, flagID string) error {
 	tag, err := tx.Exec(ctx,
 		`UPDATE flags SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID)
 	if err != nil {
-		if isNoRows(err) {
-			return ErrNotFound
-		}
 		return err
 	}
 	if tag.RowsAffected() == 0 {

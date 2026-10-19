@@ -133,7 +133,7 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 		}
 	}
 
-	api := e.Group("/api/v1", apiHeaders, auth)
+	api := e.Group("/api/v1", apiHeaders, auth, middleware.ValidIDs())
 	api.GET("/auth/me", h.Auth.Me)
 
 	registerOnboardingRoutes(api, h)

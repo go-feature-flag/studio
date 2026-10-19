@@ -19,7 +19,9 @@ type denial struct {
 
 // denyRole answers both "no role" and "no such flagset/flag": telling them
 // apart would let anyone probe which ids exist in other tenants. Super admins
-// skip the gate and get the handler's real 404.
+// skip the gate and get the handler's real 404. A malformed id is denied before
+// any lookup: the API answers it with 404 earlier (ValidIDs), but a gate must
+// never turn client input into a 500.
 var denyRole = &denial{http.StatusForbidden, "insufficient role"}
 
 // gate is the shape every RBAC middleware shares: 401 without a session, a
@@ -53,7 +55,11 @@ func RequireSuperAdmin() echo.MiddlewareFunc {
 // empty or unknown id is a 403 like a missing role (as in every gate below).
 func RequireTeamRole(teams *service.TeamService, paramName string, minRole model.Role) echo.MiddlewareFunc {
 	return gate(func(c *echo.Context, userID string) *denial {
-		return teamRole(c, teams, c.Param(paramName), userID, minRole)
+		id := c.Param(paramName)
+		if !IsUUID(id) {
+			return denyRole
+		}
+		return teamRole(c, teams, id, userID, minRole)
 	})
 }
 
@@ -62,7 +68,11 @@ func RequireCompanyRole(
 	companies *service.CompanyService, paramName string, minRole model.CompanyRole,
 ) echo.MiddlewareFunc {
 	return gate(func(c *echo.Context, userID string) *denial {
-		role, err := companies.Role(c.Request().Context(), c.Param(paramName), userID)
+		id := c.Param(paramName)
+		if !IsUUID(id) {
+			return &denial{http.StatusForbidden, "insufficient company role"}
+		}
+		role, err := companies.Role(c.Request().Context(), id, userID)
 		if err != nil {
 			return serverError(c, err, "failed to load company membership")
 		}
@@ -90,7 +100,11 @@ func RequireFlagRole(
 	paramName string, minRole model.Role,
 ) echo.MiddlewareFunc {
 	return gate(func(c *echo.Context, userID string) *denial {
-		fsID, err := flags.FlagsetID(c.Request().Context(), c.Param(paramName))
+		id := c.Param(paramName)
+		if !IsUUID(id) {
+			return denyRole
+		}
+		fsID, err := flags.FlagsetID(c.Request().Context(), id)
 		if errors.Is(err, service.ErrNotFound) {
 			return denyRole
 		}
@@ -105,6 +119,9 @@ func flagsetRole(
 	c *echo.Context, teams *service.TeamService, flagsets *service.FlagsetService, flagsetID, userID string,
 	minRole model.Role,
 ) *denial {
+	if !IsUUID(flagsetID) {
+		return denyRole
+	}
 	fs, err := flagsets.Get(c.Request().Context(), flagsetID)
 	if errors.Is(err, service.ErrNotFound) {
 		return denyRole

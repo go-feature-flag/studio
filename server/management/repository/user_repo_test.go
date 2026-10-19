@@ -198,8 +198,6 @@ func TestUserRepoLookups(t *testing.T) {
 		},
 		{name: "by email", lookup: byEmail("alice@example.com"), wantFound: true},
 		{name: "missing id", lookup: byID("00000000-0000-0000-0000-000000000000")},
-		// A malformed id can't match a row: not found, not a server error.
-		{name: "malformed id", lookup: byID("not-a-uuid")},
 		{name: "missing email", lookup: byEmail("nobody@example.com")},
 	}
 	for _, tt := range tests {

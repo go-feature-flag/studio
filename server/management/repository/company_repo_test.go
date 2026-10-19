@@ -58,7 +58,6 @@ func TestCompanyRepoCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, mem)
 	assert.ErrorIs(t, repo.Delete(ctx, created.ID), repository.ErrNotFound)
-	assert.ErrorIs(t, repo.Delete(ctx, "not-a-uuid"), repository.ErrNotFound)
 }
 
 func TestCompanyRepoMembership(t *testing.T) {

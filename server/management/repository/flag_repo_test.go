@@ -669,8 +669,6 @@ func TestFlagRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, _, err = versions.ListByFlag(ctx, id, 10, 0)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.ErrorIs(t, flags.SoftDelete(t.Context(), nil, "not-a-uuid"), repository.ErrNotFound)
-	assert.ErrorIs(t, flags.SetDisabled(t.Context(), nil, "not-a-uuid", true), repository.ErrNotFound)
 	assert.ErrorIs(t, flags.SetDisabled(ctx, nil, id, true), context.Canceled)
 
 	// Writes take the caller's tx: a failed statement surfaces its error.

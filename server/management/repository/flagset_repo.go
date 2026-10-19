@@ -134,8 +134,7 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 		len(req.EvaluationContextEnrichment) > 0, j[0], len(req.DefaultTestingEvaluationContext) > 0, j[1],
 	), &fs)
 	if err != nil {
-		// Not isNoRows: 22P02 here is usually invalid jsonb input, not a bad id.
-		if errors.Is(err, pgx.ErrNoRows) {
+		if isNoRows(err) {
 			return nil, ErrNotFound
 		}
 		return nil, mapFlagsetNameTaken(err)
@@ -172,9 +171,6 @@ func (r *FlagsetRepo) SoftDelete(ctx context.Context, id string) error {
 		tag, err := tx.Exec(ctx,
 			`UPDATE flagsets SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, id)
 		if err != nil {
-			if isNoRows(err) {
-				return ErrNotFound
-			}
 			return err
 		}
 		if tag.RowsAffected() == 0 {
