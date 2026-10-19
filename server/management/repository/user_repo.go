@@ -46,7 +46,7 @@ func (r *UserRepo) scanOne(ctx context.Context, q string, args ...any) (*model.U
 	var u model.User
 	if err := scanUser(r.db.Pool.QueryRow(ctx, q, args...), &u); err != nil {
 		if isNoRows(err) {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}

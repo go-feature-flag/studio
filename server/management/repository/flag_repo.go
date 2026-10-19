@@ -52,7 +52,7 @@ func (r *FlagRepo) GetByID(ctx context.Context, id string) (*model.Flag, error) 
 
 // GetForUpdate reads the live flag inside tx and locks its row until tx ends,
 // so a save works from the current version and a concurrent delete or save
-// waits. Returns (nil, nil) when the flag is missing or deleted.
+// waits. ErrNotFound when the flag is missing or deleted.
 func (r *FlagRepo) GetForUpdate(ctx context.Context, tx pgx.Tx, id string) (*model.Flag, error) {
 	// Lock first, then read in a second statement: a single SELECT … FOR
 	// UPDATE OF f that waited on the lock would re-check only the flag row and
@@ -64,7 +64,7 @@ func (r *FlagRepo) GetForUpdate(ctx context.Context, tx pgx.Tx, id string) (*mod
 		return nil, err
 	}
 	if tag.RowsAffected() == 0 {
-		return nil, nil
+		return nil, ErrNotFound
 	}
 	return getFlag(ctx, tx, id)
 }
@@ -81,7 +81,7 @@ func getFlag(ctx context.Context, q queryRower, id string) (*model.Flag, error) 
 		&f.Payload, &f.CurrentVersion)
 	if err != nil {
 		if isNoRows(err) {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}

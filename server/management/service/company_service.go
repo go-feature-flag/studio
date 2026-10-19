@@ -67,11 +67,7 @@ func (s *CompanyService) Create(
 }
 
 func (s *CompanyService) Get(ctx context.Context, id string) (*model.Company, error) {
-	c, err := s.companies.GetByID(ctx, id)
-	if err == nil && c == nil {
-		return nil, ErrNotFound
-	}
-	return c, err
+	return s.companies.GetByID(ctx, id)
 }
 
 // List returns visible companies. SuperAdmin sees all; otherwise the user's company.
@@ -87,7 +83,10 @@ func (s *CompanyService) List(ctx context.Context, userID string, superAdmin boo
 		return []model.Company{}, nil
 	}
 	c, err := s.companies.GetByID(ctx, m.CompanyID)
-	if err != nil || c == nil {
+	if errors.Is(err, ErrNotFound) { // deleted since the membership read
+		return []model.Company{}, nil
+	}
+	if err != nil {
 		return nil, err
 	}
 	return []model.Company{*c}, nil
@@ -100,9 +99,6 @@ func (s *CompanyService) Update(
 	before, err := s.companies.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	if before == nil {
-		return nil, ErrNotFound
 	}
 	if req.DisplayName != nil {
 		if err := validateName(req.DisplayName, "displayName"); err != nil {
@@ -125,9 +121,6 @@ func (s *CompanyService) Delete(ctx context.Context, actorID, id string) error {
 	before, err := s.companies.GetByID(ctx, id)
 	if err != nil {
 		return err
-	}
-	if before == nil {
-		return ErrNotFound
 	}
 	if err := s.companies.Delete(ctx, id); err != nil {
 		return writeError(err)
@@ -162,14 +155,17 @@ func (s *CompanyService) AddMember(
 	if err := errs.Err(); err != nil {
 		return nil, false, err
 	}
-	u, err := s.users.GetByEmail(ctx, req.Email)
-	if err != nil {
-		return nil, false, err
-	}
 	// A user of another company is reported as not found, like an unknown
 	// email, so callers can't probe which accounts exist in other tenants.
 	notFound := newPublicError(ErrNotFound, "user with email "+req.Email+" not found")
-	if u == nil || (u.CompanyID != nil && *u.CompanyID != companyID) {
+	u, err := s.users.GetByEmail(ctx, req.Email)
+	if errors.Is(err, ErrNotFound) {
+		return nil, false, notFound
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if u.CompanyID != nil && *u.CompanyID != companyID {
 		return nil, false, notFound
 	}
 	if req.Role != model.CompanyRoleAdmin {

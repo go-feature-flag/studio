@@ -97,7 +97,7 @@ func (r *FlagsetRepo) GetByID(ctx context.Context, id string) (*model.Flagset, e
 	), &fs)
 	if err != nil {
 		if isNoRows(err) {
-			return nil, nil
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}

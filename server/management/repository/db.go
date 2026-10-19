@@ -13,6 +13,9 @@ import (
 )
 
 var (
+	// ErrNotFound is returned by lookups (GetByID, GetByEmail...) when no live
+	// row matches. Optional reads (Membership, GetRole, First) return nil or ""
+	// instead: having none is a normal state there.
 	ErrNotFound           = errors.New("not found")
 	ErrConflictOrNotFound = errors.New("conflict or not found")
 )

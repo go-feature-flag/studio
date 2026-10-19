@@ -37,11 +37,7 @@ func (s *VersionService) List(
 }
 
 func (s *VersionService) Get(ctx context.Context, flagID string, num int) (*model.FlagVersion, error) {
-	v, err := s.versions.GetByFlagAndNumber(ctx, flagID, num)
-	if err == nil && v == nil {
-		return nil, ErrNotFound
-	}
-	return v, err
+	return s.versions.GetByFlagAndNumber(ctx, flagID, num)
 }
 
 // Rollback saves version num's payload as the flag's new current version,
@@ -75,9 +71,6 @@ func (s *VersionService) Rollback(
 		if err != nil {
 			return err
 		}
-		if before == nil {
-			return ErrNotFound
-		}
 		after := *before
 		v, err := saveFlagVersion(ctx, tx, s.flags, s.versions, &after, src.Payload, comment, actorID)
 		if err != nil {
@@ -98,9 +91,5 @@ func (s *VersionService) Rollback(
 
 // liveFlag returns the flag, or ErrNotFound when it is missing or deleted.
 func (s *VersionService) liveFlag(ctx context.Context, id string) (*model.Flag, error) {
-	f, err := s.flags.GetByID(ctx, id)
-	if err == nil && f == nil {
-		return nil, ErrNotFound
-	}
-	return f, err
+	return s.flags.GetByID(ctx, id)
 }

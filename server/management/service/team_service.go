@@ -44,7 +44,7 @@ func (s *TeamService) Create(
 	// Validate the team admin before creating the team so we never leave an
 	// admin-less team behind. The admin must already belong to the company.
 	admin, err := s.users.GetByEmail(ctx, req.AdminEmail)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 	// A user of another company is reported as not found, like an unknown
@@ -76,11 +76,7 @@ func (s *TeamService) ListByCompany(ctx context.Context, companyID string) ([]mo
 }
 
 func (s *TeamService) Get(ctx context.Context, id string) (*model.Team, error) {
-	t, err := s.teams.GetByID(ctx, id)
-	if err == nil && t == nil {
-		return nil, ErrNotFound
-	}
-	return t, err
+	return s.teams.GetByID(ctx, id)
 }
 
 func (s *TeamService) Update(
@@ -89,9 +85,6 @@ func (s *TeamService) Update(
 	before, err := s.teams.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-	if before == nil {
-		return nil, ErrNotFound
 	}
 	if req.Name != nil {
 		if err := validateName(req.Name, "name"); err != nil {
@@ -113,9 +106,6 @@ func (s *TeamService) Delete(ctx context.Context, actorID, id string) error {
 	before, err := s.teams.GetByID(ctx, id)
 	if err != nil {
 		return err
-	}
-	if before == nil {
-		return ErrNotFound
 	}
 	if err := s.teams.Delete(ctx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -142,9 +132,6 @@ func (s *TeamService) AddableMembers(ctx context.Context, teamID string) ([]mode
 	team, err := s.teams.GetByID(ctx, teamID)
 	if err != nil {
 		return nil, err
-	}
-	if team == nil {
-		return nil, ErrNotFound
 	}
 	companyMembers, err := s.companies.ListMembers(ctx, team.CompanyID)
 	if err != nil {
@@ -184,15 +171,12 @@ func (s *TeamService) AddMember(
 		return nil, false, err
 	}
 	u, err := s.users.GetByEmail(ctx, req.Email)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, false, err
 	}
 	team, err := s.teams.GetByID(ctx, teamID)
 	if err != nil {
 		return nil, false, err
-	}
-	if team == nil {
-		return nil, false, ErrNotFound
 	}
 	// User must belong to the team's company. Anyone else is "not found", like
 	// an unknown email, so callers can't probe accounts in other tenants.
@@ -252,11 +236,11 @@ func (s *TeamService) RemoveMember(ctx context.Context, actorID, teamID, userID 
 // over from a former company membership grants nothing.
 func (s *TeamService) Role(ctx context.Context, teamID, userID string) (model.Role, error) {
 	team, err := s.teams.GetByID(ctx, teamID)
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
-	}
-	if team == nil {
-		return "", nil
 	}
 
 	cm, err := s.companies.Membership(ctx, userID)

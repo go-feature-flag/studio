@@ -140,9 +140,8 @@ func TestExchangeEmailVerified(t *testing.T) {
 			s := authExchangeService(t, users, `{"sub":"s1","email":"unverified@acme.com","email_verified":`+v+`}`)
 			_, _, err := s.Exchange(t.Context(), "code", "verifier", testNonce)
 			require.ErrorContains(t, err, "email not verified")
-			u, err := users.GetByEmail(t.Context(), "unverified@acme.com")
-			require.NoError(t, err)
-			assert.Nil(t, u, "no account is created")
+			_, err = users.GetByEmail(t.Context(), "unverified@acme.com")
+			assert.ErrorIs(t, err, repository.ErrNotFound, "no account is created")
 		})
 	}
 

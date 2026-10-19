@@ -100,11 +100,11 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*Claims, 
 		return nil, fmt.Errorf("%w: %w", ErrUnauthenticated, err)
 	}
 	u, err := s.users.GetByID(ctx, c.UserID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, fmt.Errorf("%w: user not found", ErrUnauthenticated)
+	}
 	if err != nil {
 		return nil, err
-	}
-	if u == nil {
-		return nil, fmt.Errorf("%w: user not found", ErrUnauthenticated)
 	}
 	if c.SessionVersion != u.SessionVersion {
 		return nil, fmt.Errorf("%w: session revoked", ErrUnauthenticated)

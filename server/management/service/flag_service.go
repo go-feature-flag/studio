@@ -89,11 +89,7 @@ func saveFlagVersion(
 
 // liveFlagset returns the flagset, or ErrNotFound when it is missing or deleted.
 func liveFlagset(ctx context.Context, flagsets *repository.FlagsetRepo, id string) (*model.Flagset, error) {
-	fs, err := flagsets.GetByID(ctx, id)
-	if err == nil && fs == nil {
-		return nil, ErrNotFound
-	}
-	return fs, err
+	return flagsets.GetByID(ctx, id)
 }
 
 // preparePayload validates a flag payload and returns the bytes to store: the raw
@@ -124,11 +120,7 @@ func preparePayload(raw json.RawMessage) (json.RawMessage, model.ValidationError
 }
 
 func (s *FlagService) Get(ctx context.Context, id string) (*model.Flag, error) {
-	f, err := s.flags.GetByID(ctx, id)
-	if err == nil && f == nil {
-		return nil, ErrNotFound
-	}
-	return f, err
+	return s.flags.GetByID(ctx, id)
 }
 
 func (s *FlagService) List(
@@ -180,9 +172,6 @@ func (s *FlagService) Update(
 		before, err := s.flags.GetForUpdate(ctx, tx, id)
 		if err != nil {
 			return err
-		}
-		if before == nil {
-			return ErrNotFound
 		}
 		// A flag's type is immutable after creation (checked against the
 		// variations, before any metadata injection).
@@ -255,9 +244,6 @@ func (s *FlagService) lockedWrite(
 		before, err := s.flags.GetForUpdate(ctx, tx, id)
 		if err != nil {
 			return err
-		}
-		if before == nil {
-			return ErrNotFound
 		}
 		in, err := write(tx, before)
 		if err != nil {

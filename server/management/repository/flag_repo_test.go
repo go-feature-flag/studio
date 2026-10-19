@@ -230,9 +230,8 @@ func TestFlagRepoSoftDeleteAndDisable(t *testing.T) {
 
 	// SoftDelete hides the flag from reads.
 	require.NoError(t, repo.SoftDelete(ctx, nil, flag.ID))
-	got, err = repo.GetByID(ctx, flag.ID)
-	require.NoError(t, err)
-	assert.Nil(t, got, "soft-deleted flag is not returned")
+	_, err = repo.GetByID(ctx, flag.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound, "soft-deleted flag is not returned")
 
 	// Operations on a deleted flag report ErrNotFound.
 	assert.ErrorIs(t, repo.SoftDelete(ctx, nil, flag.ID), repository.ErrNotFound)
@@ -710,11 +709,12 @@ func TestFlagRepoGetForUpdate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.NoError(t, pgx.BeginFunc(ctx, db.Pool, func(tx pgx.Tx) error {
 				f, err := repo.GetForUpdate(ctx, tx, tt.id)
-				require.NoError(t, err)
 				if !tt.wantFlag {
+					assert.ErrorIs(t, err, repository.ErrNotFound)
 					assert.Nil(t, f)
 					return nil
 				}
+				require.NoError(t, err)
 				require.NotNil(t, f)
 				assert.Equal(t, 1, *f.CurrentVersion)
 				assert.JSONEq(t, testutil.DefaultFlagPayload, string(f.Payload))

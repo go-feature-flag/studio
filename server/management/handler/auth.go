@@ -128,12 +128,12 @@ func (h *AuthHandler) cookie(name, value string) *http.Cookie {
 func (h *AuthHandler) Me(c *echo.Context) error {
 	claims := middleware.MustClaims(c)
 	u, err := h.users.GetByID(c.Request().Context(), claims.UserID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return notFound(c, "user not found")
+	}
 	if err != nil {
 		slog.ErrorContext(c.Request().Context(), "failed to load user", "error", err)
 		return internal(c, "failed to load user")
-	}
-	if u == nil {
-		return notFound(c, "user not found")
 	}
 	// The stored flag isn't updated until the next login; the session's value
 	// also checks adminEmails.

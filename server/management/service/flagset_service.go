@@ -88,11 +88,7 @@ func (s *FlagsetService) Create(
 }
 
 func (s *FlagsetService) Get(ctx context.Context, id string) (*model.Flagset, error) {
-	fs, err := s.repo.GetByID(ctx, id)
-	if err == nil && fs == nil {
-		return nil, ErrNotFound
-	}
-	return fs, err
+	return s.repo.GetByID(ctx, id)
 }
 
 func (s *FlagsetService) ListByTeam(ctx context.Context, teamID string) ([]model.Flagset, error) {

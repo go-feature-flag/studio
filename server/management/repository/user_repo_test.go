@@ -208,11 +208,12 @@ func TestUserRepoLookups(t *testing.T) {
 			require.NoError(t, err)
 
 			got, err := tt.lookup(t.Context(), repo, alice)
-			require.NoError(t, err)
 			if !tt.wantFound {
+				assert.ErrorIs(t, err, repository.ErrNotFound)
 				assert.Nil(t, got)
 				return
 			}
+			require.NoError(t, err)
 			require.NotNil(t, got)
 			assert.Equal(t, alice.ID, got.ID)
 		})
