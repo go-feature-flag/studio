@@ -492,7 +492,10 @@
     "join": {
       "title": "Ask a company admin to add you",
       "subtitle": "Only a company admin can add new members. Share the email below with an admin of the company you want to join.",
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "monoTitle": "Ask an admin to give you access",
+      "monoSubtitle": "An admin must add you to a team before you can use GO Feature Flag. Share the email below with them.",
+      "checkAgain": "Check again"
     },
     "setup": {
       "title": "Set up your company",
