@@ -24,6 +24,8 @@ func NewVersionHandler(svc *service.VersionService) *VersionHandler { return &Ve
 // @Param    pageSize query int    false "items per page" minimum(1) maximum(200) default(50)
 // @Success  200      {object} model.PaginatedResponse[model.FlagVersion]
 // @Failure  400      {object} model.APIResponse "page/pageSize is not an integer"
+// @Failure  401      {object} model.APIResponse "no valid session"
+// @Failure  403      {object} model.APIResponse "insufficient role"
 // @Failure  404      {object} model.APIResponse "unknown or deleted flag"
 // @Router   /flags/{id}/versions [get]
 func (h *VersionHandler) List(c *echo.Context) error {
@@ -48,6 +50,8 @@ func (h *VersionHandler) List(c *echo.Context) error {
 // @Param    n  path int    true "version number"
 // @Success  200 {object} model.APIResponse{data=model.FlagVersion}
 // @Failure  400 {object} model.APIResponse
+// @Failure  401 {object} model.APIResponse "no valid session"
+// @Failure  403 {object} model.APIResponse "insufficient role"
 // @Failure  404 {object} model.APIResponse
 // @Router   /flags/{id}/versions/{n} [get]
 func (h *VersionHandler) Get(c *echo.Context) error {
@@ -73,8 +77,10 @@ func (h *VersionHandler) Get(c *echo.Context) error {
 // @Success  201  {object} model.APIResponse{data=model.FlagVersion} "new current version"
 // @Success  200  {object} model.APIResponse{data=model.FlagVersion} "the flag already serves it; nothing written"
 // @Failure  400  {object} model.APIResponse "invalid version number or body"
+// @Failure  401  {object} model.APIResponse "no valid session"
 // @Failure  403  {object} model.APIResponse
 // @Failure  404  {object} model.APIResponse
+// @Failure  413  {object} model.APIResponse "body larger than 256 KiB"
 // @Router   /flags/{id}/versions/{n}/rollback [post]
 func (h *VersionHandler) Rollback(c *echo.Context) error {
 	num, err := strconv.Atoi(c.Param("n"))

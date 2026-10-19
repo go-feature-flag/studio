@@ -129,7 +129,9 @@ func (h *AuthHandler) cookie(name, value string) *http.Cookie {
 // Me godoc
 // @Summary  Get current user + memberships
 // @Tags     auth
+// @Produce  json
 // @Success  200 {object} model.APIResponse{data=model.MeResponse}
+// @Failure  401 {object} model.APIResponse "no valid session"
 // @Router   /auth/me [get]
 func (h *AuthHandler) Me(c *echo.Context) error {
 	claims := middleware.MustClaims(c)

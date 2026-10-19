@@ -761,6 +761,10 @@ paths:
           description: bad from/to, page/pageSize or action
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List audit log entries with filters
       tags:
       - audit
@@ -781,6 +785,8 @@ paths:
       - auth
   /auth/me:
     get:
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -791,11 +797,17 @@ paths:
                 data:
                   $ref: '#/definitions/model.MeResponse'
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: Get current user + memberships
       tags:
       - auth
   /companies:
     get:
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -808,6 +820,10 @@ paths:
                     $ref: '#/definitions/model.Company'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -825,6 +841,8 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/model.CreateCompanyWithAdminRequest'
+      produces:
+      - application/json
       responses:
         "201":
           description: Created
@@ -837,6 +855,10 @@ paths:
               type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
           schema:
             $ref: '#/definitions/model.APIResponse'
         "403":
@@ -852,6 +874,10 @@ paths:
             mode)
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: Create a company with its first admin (super admin only)
       tags:
       - companies
@@ -863,9 +889,15 @@ paths:
         name: companyId
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -885,6 +917,8 @@ paths:
         name: companyId
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -895,6 +929,14 @@ paths:
                 data:
                   $ref: '#/definitions/model.Company'
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
           schema:
@@ -917,6 +959,8 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/model.UpdateCompanyRequest'
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -931,12 +975,20 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Update a company (company admin)
@@ -950,6 +1002,8 @@ paths:
         name: companyId
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -962,6 +1016,18 @@ paths:
                     $ref: '#/definitions/model.CompanyMember'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List company members
       tags:
       - companies
@@ -980,6 +1046,8 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/model.AddCompanyMemberRequest'
+      produces:
+      - application/json
       responses:
         "200":
           description: 'existing member: role updated'
@@ -1003,6 +1071,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1013,6 +1085,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: demoting the last company admin
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Add a member to a company, or set the role of an existing member (company
@@ -1032,11 +1108,13 @@ paths:
         name: uid
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
-        "400":
-          description: malformed id
+        "401":
+          description: no valid session
           schema:
             $ref: '#/definitions/model.APIResponse'
         "403":
@@ -1076,11 +1154,17 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/model.UpdateCompanyMemberRequest'
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
           schema:
             $ref: '#/definitions/model.APIResponse'
         "403":
@@ -1095,6 +1179,10 @@ paths:
           description: demoting the last company admin
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: Update a company member's role (company admin)
       tags:
       - companies
@@ -1106,6 +1194,8 @@ paths:
         name: companyId
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -1118,6 +1208,18 @@ paths:
                     $ref: '#/definitions/model.Team'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List teams in a company
       tags:
       - companies
@@ -1136,6 +1238,8 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/model.CreateTeamRequest'
+      produces:
+      - application/json
       responses:
         "201":
           description: Created
@@ -1150,6 +1254,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: insufficient role
           schema:
@@ -1160,6 +1268,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: team name already used in the company
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Create a team in a company (company admin)
@@ -1190,9 +1302,15 @@ paths:
         name: id
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1223,6 +1341,14 @@ paths:
                 data:
                   $ref: '#/definitions/model.Flag'
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
           schema:
@@ -1261,12 +1387,20 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Replace flag payload (team editor; creates a new version)
@@ -1300,12 +1434,20 @@ paths:
           description: invalid body, or disabled missing
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Set the disabled state of a flag (team editor; no new version)
@@ -1347,12 +1489,20 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Test-evaluate a flag against an evaluation context
@@ -1390,6 +1540,14 @@ paths:
           description: page/pageSize is not an integer
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "404":
           description: unknown or deleted flag
           schema:
@@ -1424,6 +1582,14 @@ paths:
               type: object
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
@@ -1478,12 +1644,20 @@ paths:
           description: invalid version number or body
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Roll back to a previous version (team editor; creates a new current
@@ -1530,6 +1704,18 @@ paths:
           description: disabled is not a boolean, or page/pageSize is not an integer
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List flags of a flagset
       tags:
       - flags
@@ -1568,6 +1754,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1578,6 +1768,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: flag name already used in the flagset
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Create a flag in a flagset (team editor; creates version 1)
@@ -1591,9 +1785,15 @@ paths:
         name: id
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1625,6 +1825,14 @@ paths:
                 data:
                   $ref: '#/definitions/model.Flagset'
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
           schema:
@@ -1663,6 +1871,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1673,6 +1885,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: flagset name already used in the team
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Update a flagset (team admin)
@@ -1700,8 +1916,16 @@ paths:
                     $ref: '#/definitions/model.FlagsetAPIKey'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: 'List API keys for a flagset (team editor: the keys are secrets)'
@@ -1738,12 +1962,20 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Create a new API key for a flagset (team admin)
@@ -1762,9 +1994,15 @@ paths:
         name: keyId
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1803,6 +2041,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: already in a company (or, in mono company mode, not a super
             admin)
@@ -1816,11 +2058,17 @@ paths:
           description: a company already exists (mono company mode)
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: Create a company during onboarding (user without a company)
       tags:
       - onboarding
   /teams:
     get:
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -1833,6 +2081,10 @@ paths:
                     $ref: '#/definitions/model.Team'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List teams visible to the user
       tags:
       - teams
@@ -1844,9 +2096,15 @@ paths:
         name: id
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1866,6 +2124,8 @@ paths:
         name: id
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "200":
           description: OK
@@ -1876,6 +2136,14 @@ paths:
                 data:
                   $ref: '#/definitions/model.Team'
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
           schema:
@@ -1914,6 +2182,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -1924,6 +2196,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: team name already used in the company
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Update a team (team admin)
@@ -1951,6 +2227,18 @@ paths:
                     $ref: '#/definitions/model.CompanyMember'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List company members that can be added to the team
       tags:
       - teams
@@ -1976,6 +2264,18 @@ paths:
                     $ref: '#/definitions/model.TeamMember'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List team members
       tags:
       - teams
@@ -2019,6 +2319,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: insufficient role
           schema:
@@ -2029,6 +2333,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: the team must keep at least one admin
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Add a member to a team, or set the role of an existing member (team
@@ -2048,11 +2356,13 @@ paths:
         name: uid
         required: true
         type: string
+      produces:
+      - application/json
       responses:
         "204":
           description: No Content
-        "400":
-          description: malformed id
+        "401":
+          description: no valid session
           schema:
             $ref: '#/definitions/model.APIResponse'
         "403":
@@ -2099,6 +2409,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -2109,6 +2423,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: the team must keep at least one admin
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Update a team member's role (team admin)
@@ -2194,6 +2512,18 @@ paths:
           description: invalid disabled, sort, order, page or pageSize
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List a team's flags across its flagsets (enriched with flagset name,
         type, owner), paginated
       tags:
@@ -2220,6 +2550,18 @@ paths:
                     $ref: '#/definitions/model.Flagset'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List flagsets of a team
       tags:
       - flagsets
@@ -2254,6 +2596,10 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "403":
           description: Forbidden
           schema:
@@ -2264,6 +2610,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "409":
           description: flagset name already used in the team
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Create a flagset under a team (team editor; also provisions a default
@@ -2292,6 +2642,18 @@ paths:
                     $ref: '#/definitions/model.FlagOwner'
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List the distinct owners (current version authors) of a team's flags
       tags:
       - flags
@@ -2317,6 +2679,18 @@ paths:
                     type: string
                   type: array
               type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: insufficient role
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: List the distinct tags used across a team's flags
       tags:
       - flags

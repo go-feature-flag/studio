@@ -104,6 +104,12 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
@@ -132,6 +138,9 @@
         },
         "/auth/me": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "auth"
                 ],
@@ -154,12 +163,21 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/companies": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -186,6 +204,12 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -196,6 +220,9 @@
             },
             "post": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -238,6 +265,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -255,12 +288,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/companies/{companyId}": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -293,6 +335,18 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -302,6 +356,9 @@
                 }
             },
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -319,6 +376,12 @@
                     "204": {
                         "description": "No Content"
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -335,6 +398,9 @@
             },
             "patch": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -384,6 +450,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -395,12 +467,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/companies/{companyId}/members": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -435,11 +516,32 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             },
             "post": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -507,6 +609,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -524,12 +632,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/companies/{companyId}/members/{uid}": {
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -554,8 +671,8 @@
                     "204": {
                         "description": "No Content"
                     },
-                    "400": {
-                        "description": "malformed id",
+                    "401": {
+                        "description": "no valid session",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -582,6 +699,9 @@
             },
             "patch": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -623,6 +743,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -640,12 +766,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/companies/{companyId}/teams": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "companies"
                 ],
@@ -680,11 +815,32 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             },
             "post": {
                 "consumes": [
+                    "application/json"
+                ],
+                "produces": [
                     "application/json"
                 ],
                 "tags": [
@@ -734,6 +890,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "insufficient role",
                         "schema": {
@@ -748,6 +910,12 @@
                     },
                     "409": {
                         "description": "team name already used in the company",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -823,6 +991,18 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -885,6 +1065,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -896,10 +1082,19 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             },
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "flags"
                 ],
@@ -916,6 +1111,12 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -973,6 +1174,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -981,6 +1188,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1044,6 +1257,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1052,6 +1271,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1103,6 +1328,18 @@
                     },
                     "400": {
                         "description": "page/pageSize is not an integer",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1162,6 +1399,18 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1254,6 +1503,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1262,6 +1517,12 @@
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1328,6 +1589,24 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             },
@@ -1386,6 +1665,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1400,6 +1685,12 @@
                     },
                     "409": {
                         "description": "flag name already used in the flagset",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1444,6 +1735,18 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -1453,6 +1756,9 @@
                 }
             },
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "flagsets"
                 ],
@@ -1469,6 +1775,12 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -1538,6 +1850,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1552,6 +1870,12 @@
                     },
                     "409": {
                         "description": "flagset name already used in the team",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1599,8 +1923,20 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -1661,6 +1997,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1672,12 +2014,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/flagsets/{id}/api-keys/{keyId}": {
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "flagsets"
                 ],
@@ -1701,6 +2052,12 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -1765,6 +2122,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "already in a company (or, in mono company mode, not a super admin)",
                         "schema": {
@@ -1782,12 +2145,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/teams": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "teams"
                 ],
@@ -1813,12 +2185,21 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/teams/{id}": {
             "get": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "teams"
                 ],
@@ -1851,6 +2232,18 @@
                             ]
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "404": {
                         "description": "Not Found",
                         "schema": {
@@ -1860,6 +2253,9 @@
                 }
             },
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "teams"
                 ],
@@ -1876,6 +2272,12 @@
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     },
                     "403": {
                         "description": "Forbidden",
@@ -1945,6 +2347,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -1959,6 +2367,12 @@
                     },
                     "409": {
                         "description": "team name already used in the company",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2005,6 +2419,24 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
@@ -2047,6 +2479,24 @@
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
                         }
                     }
                 }
@@ -2123,6 +2573,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "insufficient role",
                         "schema": {
@@ -2140,12 +2596,21 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
         },
         "/teams/{id}/members/{uid}": {
             "delete": {
+                "produces": [
+                    "application/json"
+                ],
                 "tags": [
                     "teams"
                 ],
@@ -2170,8 +2635,8 @@
                     "204": {
                         "description": "No Content"
                     },
-                    "400": {
-                        "description": "malformed id",
+                    "401": {
+                        "description": "no valid session",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2242,6 +2707,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -2256,6 +2727,12 @@
                     },
                     "409": {
                         "description": "the team must keep at least one admin",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2376,6 +2853,24 @@
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
@@ -2418,6 +2913,24 @@
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
                         }
                     }
                 }
@@ -2476,6 +2989,12 @@
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
@@ -2490,6 +3009,12 @@
                     },
                     "409": {
                         "description": "flagset name already used in the team",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2536,6 +3061,24 @@
                                 }
                             ]
                         }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
@@ -2578,6 +3121,24 @@
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "insufficient role",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
                         }
                     }
                 }
