@@ -30,6 +30,8 @@ can change what, and keep a history of every change.
   version. It applies its migrations at startup (set `GOFF_MGMT_DB_MIGRATE=false`
   to run them yourself).
 
+See the [deployment guide](docs/deployment.md) for configuration, reverse proxies and cookies.
+
 ## License
 
 MIT
