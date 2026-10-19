@@ -216,10 +216,12 @@ func TestFlagServiceConcurrentUpdates(t *testing.T) {
 
 	const n = 10
 	errs := make(chan error, n)
-	for range n {
+	for i := range n {
 		go func() {
+			// Distinct payloads: an identical save is a no-op.
 			_, err := svc.Update(ctx, actor.ID, flag.ID, &model.UpdateFlagRequest{
-				Payload: json.RawMessage(testutil.DefaultFlagPayload),
+				Payload: json.RawMessage(fmt.Sprintf(
+					`{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"},"metadata":{"n":%d}}`, i)),
 			})
 			errs <- err
 		}()

@@ -91,6 +91,9 @@ func (s *TeamService) Update(
 			return nil, err
 		}
 	}
+	if !changes(req.Name, before.Name) && !changes(req.Description, before.Description) {
+		return before, nil
+	}
 	t, err := s.teams.Update(ctx, id, req.Name, req.Description)
 	if err != nil {
 		return nil, writeError(err)
@@ -200,6 +203,9 @@ func (s *TeamService) AddMember(
 	}
 	added := prev == ""
 	if !added {
+		if string(prev) == string(req.Role) {
+			return m, false, nil // same role: nothing changed, nothing to audit
+		}
 		in.Action, in.Before, in.After = model.AuditActionUpdate, memberRole{string(prev)}, memberRole{string(req.Role)}
 	}
 	_ = s.audit.Record(ctx, nil, in)
@@ -241,6 +247,9 @@ func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID 
 	prev, err := s.teams.UpdateMemberRole(ctx, teamID, userID, role)
 	if err != nil {
 		return writeError(err)
+	}
+	if prev == role {
+		return nil
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, TeamID: &teamID,

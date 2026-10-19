@@ -63,14 +63,15 @@ func (h *VersionHandler) Get(c *echo.Context) error {
 }
 
 // Rollback godoc
-// @Summary  Roll back to a previous version (team editor; creates a new current version)
+// @Summary  Roll back to a previous version (team editor; creates a new current version, or 200 if already served)
 // @Tags     versions
 // @Accept   json
 // @Produce  json
 // @Param    id   path string                 true  "flag id"
 // @Param    n    path int                    true  "version number to roll back to"
 // @Param    body body model.RollbackRequest  false "optional comment"
-// @Success  201  {object} model.APIResponse{data=model.FlagVersion}
+// @Success  201  {object} model.APIResponse{data=model.FlagVersion} "new current version"
+// @Success  200  {object} model.APIResponse{data=model.FlagVersion} "the flag already serves it; nothing written"
 // @Failure  400  {object} model.APIResponse "invalid version number or body"
 // @Failure  403  {object} model.APIResponse
 // @Failure  404  {object} model.APIResponse
@@ -85,9 +86,12 @@ func (h *VersionHandler) Rollback(c *echo.Context) error {
 		return bindError(c, err)
 	}
 	claims := middleware.MustClaims(c)
-	v, err := h.svc.Rollback(c.Request().Context(), claims.UserID, c.Param("id"), num, req.Comment)
+	v, isNew, err := h.svc.Rollback(c.Request().Context(), claims.UserID, c.Param("id"), num, req.Comment)
 	if err != nil {
 		return writeServiceError(c, err, "failed to rollback")
+	}
+	if !isNew {
+		return ok(c, v)
 	}
 	return created(c, v)
 }

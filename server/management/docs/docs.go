@@ -1193,7 +1193,7 @@ const docTemplate = `{
                 "tags": [
                     "versions"
                 ],
-                "summary": "Roll back to a previous version (team editor; creates a new current version)",
+                "summary": "Roll back to a previous version (team editor; creates a new current version, or 200 if already served)",
                 "parameters": [
                     {
                         "type": "string",
@@ -1219,8 +1219,26 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
+                    "200": {
+                        "description": "the flag already serves it; nothing written",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.FlagVersion"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
                     "201": {
-                        "description": "Created",
+                        "description": "new current version",
                         "schema": {
                             "allOf": [
                                 {

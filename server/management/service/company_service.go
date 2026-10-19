@@ -124,6 +124,9 @@ func (s *CompanyService) Update(
 			return nil, err
 		}
 	}
+	if !changes(req.DisplayName, before.DisplayName) && !changes(req.Description, before.Description) {
+		return before, nil
+	}
 	c, err := s.companies.Update(ctx, id, req.DisplayName, req.Description)
 	if err != nil {
 		return nil, writeError(err)
@@ -207,6 +210,9 @@ func (s *CompanyService) AddMember(
 	}
 	added := prev == ""
 	if !added {
+		if string(prev) == string(req.Role) {
+			return m, false, nil // same role: nothing changed, nothing to audit
+		}
 		in.Action, in.Before, in.After = model.AuditActionUpdate, memberRole{string(prev)}, memberRole{string(req.Role)}
 	}
 	_ = s.audit.Record(ctx, nil, in)
@@ -252,6 +258,9 @@ func (s *CompanyService) UpdateMember(
 	_, prev, err := s.companies.UpdateMemberRole(ctx, companyID, userID, role)
 	if err != nil {
 		return writeError(err)
+	}
+	if prev == role {
+		return nil
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID,

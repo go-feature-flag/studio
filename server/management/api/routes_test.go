@@ -164,7 +164,7 @@ var routeCases = []struct {
 	{"GET", "/api/v1/flags/{flag}/versions", member, "", 403},
 	{"GET", "/api/v1/flags/{flag}/versions/1", viewer, "", 200},
 	{"GET", "/api/v1/flags/{flag}/versions/1", member, "", 403},
-	{"POST", "/api/v1/flags/{flag}/versions/1/rollback", editor, `{}`, 201},
+	{"POST", "/api/v1/flags/{flag}/versions/1/rollback", editor, `{}`, 200}, // v1 is already served: nothing written
 	{"POST", "/api/v1/flags/{flag}/versions/1/rollback", viewer, `{}`, 403},
 
 	// Malformed ids are a client error, never a 500: 404 for everyone, before

@@ -114,6 +114,11 @@ func (s *FlagsetService) Update(
 	if err != nil {
 		return nil, err
 	}
+	if !changes(req.Name, before.Name) && !changes(req.Description, before.Description) &&
+		!jsonChanges(req.EvaluationContextEnrichment, before.EvaluationContextEnrichment) &&
+		!jsonChanges(req.DefaultTestingEvaluationContext, before.DefaultTestingEvaluationContext) {
+		return before, nil
+	}
 	fs, err := s.repo.Update(ctx, id, req)
 	if err != nil {
 		return nil, writeError(err)

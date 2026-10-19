@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 
@@ -173,6 +174,12 @@ func (s *FlagService) Update(
 		if errs := model.ValidateFlagTypeUnchanged(before.Payload, req.Payload); len(errs) > 0 {
 			return errs
 		}
+		// Byte-identical: no new version, no audit entry. Bytes, not values:
+		// the stored payload keeps its key order, so a reorder is a change.
+		if bytes.Equal(payload, before.Payload) {
+			out = before
+			return nil
+		}
 		after := *before
 		if _, err := saveFlagVersion(ctx, tx, s.flags, s.versions, &after, payload, req.Comment, actorID); err != nil {
 			return err
@@ -199,11 +206,14 @@ type flagState struct {
 // flag inside the transaction, so the audit entry's before is the state it
 // actually changed.
 func (s *FlagService) SetDisabled(ctx context.Context, actorID, id string, disabled bool) error {
-	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error) {
-		if err := s.flags.SetDisabled(ctx, tx, id, disabled); err != nil {
-			return repository.AuditInput{}, err
+	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (*repository.AuditInput, error) {
+		if before.Disabled == disabled {
+			return nil, nil
 		}
-		return repository.AuditInput{
+		if err := s.flags.SetDisabled(ctx, tx, id, disabled); err != nil {
+			return nil, err
+		}
+		return &repository.AuditInput{
 			Action: model.AuditActionUpdate, Before: flagState{before.Disabled}, After: flagState{disabled},
 		}, nil
 	})
@@ -211,19 +221,20 @@ func (s *FlagService) SetDisabled(ctx context.Context, actorID, id string, disab
 
 // Delete soft-deletes the flag and records the state it deleted.
 func (s *FlagService) Delete(ctx context.Context, actorID, id string) error {
-	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error) {
+	return s.lockedWrite(ctx, actorID, id, func(tx pgx.Tx, before *model.Flag) (*repository.AuditInput, error) {
 		if err := s.flags.SoftDelete(ctx, tx, id); err != nil {
-			return repository.AuditInput{}, err
+			return nil, err
 		}
-		return repository.AuditInput{Action: model.AuditActionDelete, Before: before}, nil
+		return &repository.AuditInput{Action: model.AuditActionDelete, Before: before}, nil
 	})
 }
 
 // lockedWrite runs write on the live flag, read and locked inside a
 // transaction, and records the audit entry write returns in the same
-// transaction (actor, team, flagset, flag and target are filled in).
+// transaction (actor, team, flagset, flag and target are filled in). A nil
+// entry means write changed nothing, so nothing is audited.
 func (s *FlagService) lockedWrite(
-	ctx context.Context, actorID, id string, write func(tx pgx.Tx, before *model.Flag) (repository.AuditInput, error),
+	ctx context.Context, actorID, id string, write func(tx pgx.Tx, before *model.Flag) (*repository.AuditInput, error),
 ) error {
 	// The team is read before the transaction, so it never waits for a
 	// second pool connection while holding one.
@@ -241,12 +252,12 @@ func (s *FlagService) lockedWrite(
 			return err
 		}
 		in, err := write(tx, before)
-		if err != nil {
+		if err != nil || in == nil {
 			return err
 		}
 		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, &teamID, &before.FlagsetID, &id
 		in.TargetType, in.TargetID = model.AuditTargetFlag, id
-		return s.audit.Record(ctx, tx, in)
+		return s.audit.Record(ctx, tx, *in)
 	})
 	return writeError(err)
 }

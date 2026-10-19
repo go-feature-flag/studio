@@ -1456,8 +1456,17 @@ paths:
       produces:
       - application/json
       responses:
+        "200":
+          description: the flag already serves it; nothing written
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.FlagVersion'
+              type: object
         "201":
-          description: Created
+          description: new current version
           schema:
             allOf:
             - $ref: '#/definitions/model.APIResponse'
@@ -1478,7 +1487,7 @@ paths:
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Roll back to a previous version (team editor; creates a new current
-        version)
+        version, or 200 if already served)
       tags:
       - versions
   /flagsets/{flagsetId}/flags:

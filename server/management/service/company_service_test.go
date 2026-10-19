@@ -194,9 +194,9 @@ func TestCompanyServiceMembers(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.False(t, added)
-		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompanyMember), "a re-add is audited as a role update")
-		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompanyMember))
-		assertLastAudit(t, db, model.AuditTargetCompanyMember, user.ID, `{"role":"member"}`, `{"role":"member"}`)
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompanyMember))
+		assert.Equal(t, 0, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompanyMember),
+			"same role: nothing changed, nothing audited")
 	})
 
 	t.Run("add member invalid request -> every field reported", func(t *testing.T) {
@@ -232,8 +232,11 @@ func TestCompanyServiceMembers(t *testing.T) {
 	t.Run("update member role happy path", func(t *testing.T) {
 		err := svc.UpdateMember(ctx, actor.ID, company.ID, user.ID, model.CompanyRoleAdmin)
 		require.NoError(t, err)
-		assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompanyMember))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompanyMember))
 		assertLastAudit(t, db, model.AuditTargetCompanyMember, user.ID, `{"role":"member"}`, `{"role":"admin"}`)
+		require.NoError(t, svc.UpdateMember(ctx, actor.ID, company.ID, user.ID, model.CompanyRoleAdmin))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompanyMember),
+			"same role again: not audited")
 	})
 
 	t.Run("update member invalid role -> validation error", func(t *testing.T) {
