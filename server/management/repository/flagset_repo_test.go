@@ -40,6 +40,11 @@ func TestFlagsetRepoCRUD(t *testing.T) {
 
 	_, err = repo.GetByID(ctx, "00000000-0000-0000-0000-000000000000")
 	assert.ErrorIs(t, err, repository.ErrNotFound)
+	teamID, err := repo.TeamID(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, team.ID, teamID)
+	_, err = repo.TeamID(ctx, "00000000-0000-0000-0000-000000000000")
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 
 	_ = testutil.SeedFlagset(t, db, team.ID, "staging")
 	list, err := repo.ListByTeam(ctx, team.ID)
@@ -103,6 +108,8 @@ func TestFlagsetRepoSoftDelete(t *testing.T) {
 
 	_, err = repo.GetByID(ctx, fs.ID)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
+	_, err = repo.TeamID(ctx, fs.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound, "a deleted flagset has no team")
 	list, err := repo.ListByTeam(ctx, team.ID)
 	require.NoError(t, err)
 	assert.Empty(t, list)

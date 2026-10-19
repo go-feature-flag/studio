@@ -172,7 +172,7 @@ func TestRBACLookupErrors(t *testing.T) {
 	flagsets := service.NewFlagsetService(flagsetRepo, audit)
 	flags := service.NewFlagService(db, repository.NewFlagRepo(db), repository.NewFlagVersionRepo(db), flagsetRepo, audit)
 	// teams is only reached once the resource exists, which no case here needs.
-	flagMW := middleware.RequireFlagRole(nil, flagsets, flags, "id", model.RoleViewer)
+	flagMW := middleware.RequireFlagRole(nil, flags, "id", model.RoleViewer)
 	flagsetMW := middleware.RequireFlagsetRole(nil, flagsets, "id", model.RoleViewer)
 
 	run := func(mw echo.MiddlewareFunc, ctx context.Context, id string) int {

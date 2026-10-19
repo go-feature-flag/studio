@@ -120,8 +120,12 @@ func TestLookupMalformedIDIsAnError(t *testing.T) {
 			_, err := repository.NewFlagRepo(db).GetByID(ctx, bad)
 			return err
 		}},
-		{"FlagRepo.GetFlagsetID", func(ctx context.Context) error {
-			_, err := repository.NewFlagRepo(db).GetFlagsetID(ctx, bad)
+		{"FlagRepo.TeamID", func(ctx context.Context) error {
+			_, err := repository.NewFlagRepo(db).TeamID(ctx, bad)
+			return err
+		}},
+		{"FlagsetRepo.TeamID", func(ctx context.Context) error {
+			_, err := repository.NewFlagsetRepo(db).TeamID(ctx, bad)
 			return err
 		}},
 	}

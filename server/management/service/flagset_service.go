@@ -91,6 +91,11 @@ func (s *FlagsetService) Get(ctx context.Context, id string) (*model.Flagset, er
 	return s.repo.GetByID(ctx, id)
 }
 
+// TeamID returns the team owning the live flagset.
+func (s *FlagsetService) TeamID(ctx context.Context, id string) (string, error) {
+	return s.repo.TeamID(ctx, id)
+}
+
 func (s *FlagsetService) ListByTeam(ctx context.Context, teamID string) ([]model.Flagset, error) {
 	return s.repo.ListByTeam(ctx, teamID)
 }

@@ -39,7 +39,7 @@ func (s *FlagService) Create(
 	if err := errs.Err(); err != nil {
 		return nil, err
 	}
-	fs, err := liveFlagset(ctx, s.flagsets, flagsetID)
+	teamID, err := s.flagsets.TeamID(ctx, flagsetID)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (s *FlagService) Create(
 		}
 		out = f
 		return s.audit.Record(ctx, tx, repository.AuditInput{
-			ActorUserID: &actorID, TeamID: &fs.TeamID, FlagsetID: &flagsetID, FlagID: &f.ID,
+			ActorUserID: &actorID, TeamID: &teamID, FlagsetID: &flagsetID, FlagID: &f.ID,
 			Action: model.AuditActionCreate, TargetType: model.AuditTargetFlag, TargetID: f.ID, After: f,
 		})
 	})
@@ -85,11 +85,6 @@ func saveFlagVersion(
 	}
 	f.CurrentVersionID, f.CurrentVersion, f.Payload, f.UpdatedAt = &v.ID, &v.VersionNumber, v.Payload, updatedAt
 	return v, nil
-}
-
-// liveFlagset returns the flagset, or ErrNotFound when it is missing or deleted.
-func liveFlagset(ctx context.Context, flagsets *repository.FlagsetRepo, id string) (*model.Flagset, error) {
-	return flagsets.GetByID(ctx, id)
 }
 
 // preparePayload validates a flag payload and returns the bytes to store: the raw
@@ -163,7 +158,7 @@ func (s *FlagService) Update(
 	if err != nil {
 		return nil, err
 	}
-	fs, err := liveFlagset(ctx, s.flagsets, current.FlagsetID)
+	teamID, err := s.flagsets.TeamID(ctx, current.FlagsetID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +179,7 @@ func (s *FlagService) Update(
 		}
 		out = &after
 		return s.audit.Record(ctx, tx, repository.AuditInput{
-			ActorUserID: &actorID, TeamID: &fs.TeamID, FlagsetID: &before.FlagsetID, FlagID: &id,
+			ActorUserID: &actorID, TeamID: &teamID, FlagsetID: &before.FlagsetID, FlagID: &id,
 			Action: model.AuditActionUpdate, TargetType: model.AuditTargetFlag, TargetID: id,
 			Before: before, After: &after,
 		})
@@ -236,7 +231,7 @@ func (s *FlagService) lockedWrite(
 	if err != nil {
 		return err
 	}
-	fs, err := liveFlagset(ctx, s.flagsets, current.FlagsetID)
+	teamID, err := s.flagsets.TeamID(ctx, current.FlagsetID)
 	if err != nil {
 		return err
 	}
@@ -249,16 +244,16 @@ func (s *FlagService) lockedWrite(
 		if err != nil {
 			return err
 		}
-		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, &fs.TeamID, &before.FlagsetID, &id
+		in.ActorUserID, in.TeamID, in.FlagsetID, in.FlagID = &actorID, &teamID, &before.FlagsetID, &id
 		in.TargetType, in.TargetID = model.AuditTargetFlag, id
 		return s.audit.Record(ctx, tx, in)
 	})
 	return writeError(err)
 }
 
-func (s *FlagService) FlagsetID(ctx context.Context, flagID string) (string, error) {
-	fsID, err := s.flags.GetFlagsetID(ctx, flagID)
-	return fsID, writeError(err)
+// TeamID returns the team owning the live flag.
+func (s *FlagService) TeamID(ctx context.Context, flagID string) (string, error) {
+	return s.flags.TeamID(ctx, flagID)
 }
 
 // Evaluate test-evaluates a flag against the supplied evaluation context, running
@@ -272,7 +267,7 @@ func (s *FlagService) Evaluate(
 	if err != nil {
 		return nil, err
 	}
-	fs, err := liveFlagset(ctx, s.flagsets, f.FlagsetID)
+	fs, err := s.flagsets.GetByID(ctx, f.FlagsetID)
 	if err != nil {
 		return nil, err
 	}

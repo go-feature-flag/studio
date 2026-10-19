@@ -335,15 +335,14 @@ func softDeleteFlag(ctx context.Context, tx pgx.Tx, flagID string) error {
 	return err
 }
 
-func (r *FlagRepo) GetFlagsetID(ctx context.Context, flagID string) (string, error) {
-	var fsID string
-	err := r.db.Pool.QueryRow(ctx,
-		`SELECT flagset_id FROM flags WHERE id = $1 AND deleted_at IS NULL`, flagID).Scan(&fsID)
-	if err != nil {
-		if isNoRows(err) {
-			return "", ErrNotFound
-		}
-		return "", err
+// TeamID returns the team owning the live flag (through its live flagset) in
+// one indexed lookup: RBAC and audit only need the team, not the flag.
+func (r *FlagRepo) TeamID(ctx context.Context, flagID string) (string, error) {
+	var teamID string
+	err := r.db.Pool.QueryRow(ctx, `SELECT fs.team_id FROM flags f JOIN flagsets fs ON fs.id = f.flagset_id
+		WHERE f.id = $1 AND f.deleted_at IS NULL AND fs.deleted_at IS NULL`, flagID).Scan(&teamID)
+	if isNoRows(err) {
+		return "", ErrNotFound
 	}
-	return fsID, nil
+	return teamID, err
 }

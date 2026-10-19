@@ -90,46 +90,38 @@ func RequireFlagsetRole(
 	teams *service.TeamService, flagsets *service.FlagsetService, paramName string, minRole model.Role,
 ) echo.MiddlewareFunc {
 	return gate(func(c *echo.Context, userID string) *denial {
-		return flagsetRole(c, teams, flagsets, c.Param(paramName), userID, minRole)
+		return resourceRole(c, teams, flagsets.TeamID, c.Param(paramName), userID, minRole)
 	})
 }
 
-// RequireFlagRole resolves flag → flagset → team and checks the caller's role.
+// RequireFlagRole resolves the team owning the flag (path param paramName) and
+// checks the caller's role on it.
 func RequireFlagRole(
-	teams *service.TeamService, flagsets *service.FlagsetService, flags *service.FlagService,
-	paramName string, minRole model.Role,
+	teams *service.TeamService, flags *service.FlagService, paramName string, minRole model.Role,
 ) echo.MiddlewareFunc {
 	return gate(func(c *echo.Context, userID string) *denial {
-		id := c.Param(paramName)
-		if !IsUUID(id) {
-			return denyRole
-		}
-		fsID, err := flags.FlagsetID(c.Request().Context(), id)
-		if errors.Is(err, service.ErrNotFound) {
-			return denyRole
-		}
-		if err != nil {
-			return serverError(c, err, "failed to load flag")
-		}
-		return flagsetRole(c, teams, flagsets, fsID, userID, minRole)
+		return resourceRole(c, teams, flags.TeamID, c.Param(paramName), userID, minRole)
 	})
 }
 
-func flagsetRole(
-	c *echo.Context, teams *service.TeamService, flagsets *service.FlagsetService, flagsetID, userID string,
-	minRole model.Role,
+// resourceRole checks the caller's role on the team owning a flagset or flag,
+// resolved by teamOf in one query. A missing resource is denied like a missing
+// role.
+func resourceRole(
+	c *echo.Context, teams *service.TeamService, teamOf func(context.Context, string) (string, error),
+	id, userID string, minRole model.Role,
 ) *denial {
-	if !IsUUID(flagsetID) {
+	if !IsUUID(id) {
 		return denyRole
 	}
-	fs, err := flagsets.Get(c.Request().Context(), flagsetID)
+	teamID, err := teamOf(c.Request().Context(), id)
 	if errors.Is(err, service.ErrNotFound) {
 		return denyRole
 	}
 	if err != nil {
-		return serverError(c, err, "failed to load flagset")
+		return serverError(c, err, "failed to load resource")
 	}
-	return teamRole(c, teams, fs.TeamID, userID, minRole)
+	return teamRole(c, teams, teamID, userID, minRole)
 }
 
 func teamRole(c *echo.Context, teams *service.TeamService, teamID, userID string, minRole model.Role) *denial {

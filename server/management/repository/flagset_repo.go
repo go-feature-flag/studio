@@ -104,6 +104,18 @@ func (r *FlagsetRepo) GetByID(ctx context.Context, id string) (*model.Flagset, e
 	return &fs, nil
 }
 
+// TeamID returns the team owning the live flagset, without the counts
+// flagsetCols computes: RBAC and audit only need the team.
+func (r *FlagsetRepo) TeamID(ctx context.Context, id string) (string, error) {
+	var teamID string
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT team_id FROM flagsets WHERE id = $1 AND deleted_at IS NULL`, id).Scan(&teamID)
+	if isNoRows(err) {
+		return "", ErrNotFound
+	}
+	return teamID, err
+}
+
 func (r *FlagsetRepo) ListByTeam(ctx context.Context, teamID string) ([]model.Flagset, error) {
 	rows, err := r.db.Pool.Query(ctx,
 		`SELECT `+flagsetCols+` FROM flagsets WHERE team_id = $1 AND deleted_at IS NULL ORDER BY name`, teamID)

@@ -218,10 +218,10 @@ func TestFlagRepoSoftDeleteAndDisable(t *testing.T) {
 	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
 	flag := testutil.SeedFlag(t, db, fs.ID, "my-flag", nil, nil)
 
-	// GetFlagsetID resolves the owning flagset.
-	fsID, err := repo.GetFlagsetID(ctx, flag.ID)
+	// TeamID resolves the owning team through the flagset.
+	teamID, err := repo.TeamID(ctx, flag.ID)
 	require.NoError(t, err)
-	assert.Equal(t, fs.ID, fsID)
+	assert.Equal(t, team.ID, teamID)
 
 	// SetDisabled toggles.
 	require.NoError(t, repo.SetDisabled(ctx, nil, flag.ID, true))
@@ -236,7 +236,7 @@ func TestFlagRepoSoftDeleteAndDisable(t *testing.T) {
 	// Operations on a deleted flag report ErrNotFound.
 	assert.ErrorIs(t, repo.SoftDelete(ctx, nil, flag.ID), repository.ErrNotFound)
 	assert.ErrorIs(t, repo.SetDisabled(ctx, nil, flag.ID, false), repository.ErrNotFound)
-	_, err = repo.GetFlagsetID(ctx, flag.ID)
+	_, err = repo.TeamID(ctx, flag.ID)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
 
@@ -662,7 +662,7 @@ func TestFlagRepoQueryErrors(t *testing.T) {
 	_, err = flags.ListTeamTags(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.ErrorIs(t, flags.SoftDelete(ctx, nil, id), context.Canceled)
-	_, err = flags.GetFlagsetID(ctx, id)
+	_, err = flags.TeamID(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = versions.GetByFlagAndNumber(ctx, id, 1)
 	assert.ErrorIs(t, err, context.Canceled)

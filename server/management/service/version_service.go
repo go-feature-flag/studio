@@ -57,7 +57,7 @@ func (s *VersionService) Rollback(
 	if err != nil {
 		return nil, err
 	}
-	fs, err := liveFlagset(ctx, s.flagsets, current.FlagsetID)
+	teamID, err := s.flagsets.TeamID(ctx, current.FlagsetID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func (s *VersionService) Rollback(
 		}
 		out = v
 		return s.audit.Record(ctx, tx, repository.AuditInput{
-			ActorUserID: &actorID, TeamID: &fs.TeamID, FlagsetID: &before.FlagsetID, FlagID: &flagID,
+			ActorUserID: &actorID, TeamID: &teamID, FlagsetID: &before.FlagsetID, FlagID: &flagID,
 			Action: model.AuditActionRollback, TargetType: model.AuditTargetFlag, TargetID: flagID,
 			Before: before, After: &after, Metadata: map[string]int{"restoredVersion": num},
 		})

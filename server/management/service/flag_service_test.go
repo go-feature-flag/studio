@@ -387,11 +387,11 @@ func TestFlagServiceListAndFlagsetID(t *testing.T) {
 		assert.Equal(t, []model.FlagOwner{{ID: actor.ID, Name: "Actor"}}, owners)
 	})
 
-	t.Run("flagset id for flag", func(t *testing.T) {
-		got, err := svc.FlagsetID(ctx, f1.ID)
+	t.Run("team id for flag", func(t *testing.T) {
+		got, err := svc.TeamID(ctx, f1.ID)
 		require.NoError(t, err)
-		assert.Equal(t, fs.ID, got)
-		_, err = svc.FlagsetID(ctx, "00000000-0000-0000-0000-000000000000")
+		assert.Equal(t, fs.TeamID, got)
+		_, err = svc.TeamID(ctx, "00000000-0000-0000-0000-000000000000")
 		assert.ErrorIs(t, err, service.ErrNotFound)
 	})
 }
