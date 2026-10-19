@@ -17,7 +17,6 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[Auth] Add `Cache-Control: no-store` to the login redirects.** The callback URL carries the one-time code, but `no-store` is only set on `/api/v1`, not on `/auth/login` and `/auth/callback`. `Referrer-Policy: no-referrer` is already global.
 - [ ] **[Services] Keep a team admin.** `TeamService.Create` refuses an admin-less team, but `RemoveMember`, `UpdateMember` and `AddMember` (re-adding the last admin with a lower role) can remove or demote the last admin. Company admins still inherit admin, so nobody is locked out; either guard the last explicit admin or drop the "never admin-less" wording.
 - [ ] **[Services] Decide whether a company needs an admin at creation.** `CompanyService.Create` (super admin only) creates a company with no admin (in mono mode unassigned users join as members), so it runs admin-less until the super admin adds one, and `ensureNotLastAdmin` has nothing to protect. Onboarding does create the admin. If every company must have one, take an `adminEmail` like teams and create both in one transaction.
 - [ ] **[Repository] Don't log every audit failure at ERROR.** `AuditRepo.Record` logs `context.Canceled` (client disconnect) and errors the caller already handles, so a caller that logs too gets duplicates and disconnects look like a broken audit pipeline. Skip `errors.Is(err, context.Canceled)` in the log, like the RBAC middleware does.

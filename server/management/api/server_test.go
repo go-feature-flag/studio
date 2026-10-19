@@ -162,6 +162,36 @@ func TestSecurityHeaders(t *testing.T) {
 	assert.Equal(t, "max-age=31536000; includeSubdomains", rec.Header().Get(echo.HeaderStrictTransportSecurity))
 }
 
+// The login redirects carry the one-time code (callback) or set cookies:
+// caches must not keep them, even when the request is refused.
+func TestAuthRoutesAreNotCached(t *testing.T) {
+	e := platformServer(config.Config{})
+	tests := []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodGet, "/auth/callback?state=s&code=c", http.StatusBadRequest}, // no state cookie
+		{http.MethodPost, "/auth/logout", http.StatusNoContent},
+		{http.MethodPost, "/api/v1/auth/logout", http.StatusNoContent},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			rec := platformServe(e, httptest.NewRequest(tt.method, tt.path, nil))
+			assert.Equal(t, tt.want, rec.Code)
+			assert.Equal(t, "no-store", rec.Header().Get(echo.HeaderCacheControl))
+			assert.Equal(t, "no-referrer", rec.Header().Get(echo.HeaderReferrerPolicy))
+		})
+	}
+
+	// A rate-limited login is not cached either.
+	for range 6 {
+		platformServe(e, httptest.NewRequest(http.MethodGet, "/auth/callback", nil))
+	}
+	rec := platformServe(e, httptest.NewRequest(http.MethodGet, "/auth/login", nil))
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.Equal(t, "no-store", rec.Header().Get(echo.HeaderCacheControl))
+}
+
 // RBAC lookups: a genuine miss (incl. a malformed id) answers 403 like a
 // missing role, so ids can't be probed; a failing lookup is a 500, not a
 // misleading denial.

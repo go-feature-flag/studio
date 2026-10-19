@@ -100,15 +100,28 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 		return c.JSON(200, model.APIResponse{Data: map[string]string{"status": "ok"}})
 	})
 
+	// Authenticated and auth responses must not be cached: they carry API keys,
+	// session cookies, or (the callback URL) the one-time code. They are JSON
+	// or redirects, so a CSP that loads nothing costs nothing (kept off
+	// /swagger/*, which needs scripts).
+	apiHeaders := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			h := c.Response().Header()
+			h.Set(echo.HeaderCacheControl, "no-store")
+			h.Set(echo.HeaderContentSecurityPolicy, "default-src 'none'; frame-ancestors 'none'")
+			return next(c)
+		}
+	}
+
 	// Login is the public surface and each callback costs an OAuth exchange.
 	// Keyed by RealIP: behind a reverse proxy, set server.trustedProxies or
 	// every client shares the proxy's IP and this becomes a global 5 req/s limit.
 	loginLimit := rateLimit(5, nil)
-	e.GET("/auth/login", h.Auth.Login, loginLimit)
-	e.GET("/auth/callback", h.Auth.Callback, loginLimit)
-	e.POST("/auth/logout", h.Auth.Logout)
+	e.GET("/auth/login", h.Auth.Login, apiHeaders, loginLimit)
+	e.GET("/auth/callback", h.Auth.Callback, apiHeaders, loginLimit)
+	e.POST("/auth/logout", h.Auth.Logout, apiHeaders)
 	// Outside the auth group so an expired session can still log out.
-	e.POST("/api/v1/auth/logout", h.Auth.Logout)
+	e.POST("/api/v1/auth/logout", h.Auth.Logout, apiHeaders)
 
 	// Public: the webui reads it before login.
 	e.GET("/api/v1/config", h.Config.Get)
@@ -119,18 +132,6 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	// the origin that holds the session cookie).
 	if cfg.Server.EnableSwagger {
 		e.GET("/swagger/*", echoSwagger.WrapHandler, auth)
-	}
-
-	// Authenticated responses (flagset API keys included) must not be cached.
-	// They are JSON only, so a CSP that loads nothing costs nothing (kept off
-	// /swagger/*, which needs scripts).
-	apiHeaders := func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
-			h := c.Response().Header()
-			h.Set(echo.HeaderCacheControl, "no-store")
-			h.Set(echo.HeaderContentSecurityPolicy, "default-src 'none'; frame-ancestors 'none'")
-			return next(c)
-		}
 	}
 
 	api := e.Group("/api/v1", apiHeaders, auth, middleware.ValidIDs())
