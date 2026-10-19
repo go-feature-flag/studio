@@ -17,7 +17,7 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[Repo] Add `CONTRIBUTING.md`.** The checklist in `.github/pull_request_template.md` links to it, so that link is broken today.
+_Nothing open._
 
 ## P3 — Nice to have or blocked
 
