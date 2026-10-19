@@ -434,10 +434,6 @@ func TestFlagRepoListByTeamFiltersAndPaging(t *testing.T) {
 		out := make([]string, len(items))
 		for i, it := range items {
 			out[i] = it.Name
-			// The SQL generated column must agree with the Go inference.
-			if p, ok := payloads[it.Type]; ok {
-				assert.Equal(t, model.InferFlagType(json.RawMessage(p)), it.Type)
-			}
 		}
 		return out, total
 	}

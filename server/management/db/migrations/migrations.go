@@ -4,6 +4,7 @@ package migrations
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,14 +23,18 @@ func Up(ctx context.Context, pool *pgxpool.Pool) (int, error) {
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer func() { _ = sqlDB.Close() }()
 
-	locker, err := lock.NewPostgresSessionLocker()
-	if err != nil {
-		return 0, err
-	}
-	p, err := goose.NewProvider(goose.DialectPostgres, sqlDB, files, goose.WithSessionLocker(locker))
+	p, err := newProvider(sqlDB)
 	if err != nil {
 		return 0, err
 	}
 	results, err := p.Up(ctx)
 	return len(results), err
+}
+
+func newProvider(sqlDB *sql.DB) (*goose.Provider, error) {
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return nil, err
+	}
+	return goose.NewProvider(goose.DialectPostgres, sqlDB, files, goose.WithSessionLocker(locker))
 }
