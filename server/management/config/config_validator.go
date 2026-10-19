@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("auth.jwtSecret must be at least 32 chars"))
 	}
 	errs = appendDurationError(errs, "auth.sessionMaxAge", c.Auth.SessionMaxAge)
+	if !validRedirect(c.Auth.PostLoginRedirect) {
+		errs = append(errs, errors.New("auth.postLoginRedirect must be a path starting with a single / "+
+			"or an absolute http(s) URL"))
+	}
 	if !slices.Contains([]string{"debug", "info", "warn", "error"}, c.Log.Level) {
 		errs = append(errs, errors.New("log.level must be one of debug|info|warn|error"))
 	}
@@ -66,6 +71,24 @@ func appendDurationError(errs []error, field string, d time.Duration) []error {
 		return append(errs, fmt.Errorf("%s must be at least 1s; durations need a unit, e.g. 30s, 5m or 1h", field))
 	}
 	return errs
+}
+
+// validRedirect accepts "" (the callback then uses "/"), a same-origin path, or
+// an absolute http(s) URL with a host. A path must not start with "//" or
+// contain a backslash: browsers read "//host" and "/\host" as another host,
+// turning a typo into a protocol-relative redirect.
+func validRedirect(s string) bool {
+	if s == "" {
+		return true
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "" && u.Host == "" {
+		return strings.HasPrefix(s, "/") && !strings.HasPrefix(s, "//") && !strings.Contains(s, `\`)
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 func blank(s string) bool { return strings.TrimSpace(s) == "" }

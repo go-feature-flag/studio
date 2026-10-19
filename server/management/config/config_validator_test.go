@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +60,16 @@ func TestConfigValidate(t *testing.T) {
 		{"zero session max age", func(c *Config) { c.Auth.SessionMaxAge = 0 }, "auth.sessionMaxAge"},
 		{"unknown log level", func(c *Config) { c.Log.Level = "verbose" }, "log.level"},
 		{"unknown log format", func(c *Config) { c.Log.Format = "xml" }, "log.format"},
+		{"relative redirect", func(c *Config) { c.Auth.PostLoginRedirect = "/flags?tab=all" }, ""},
+		{"absolute redirect", func(c *Config) { c.Auth.PostLoginRedirect = "https://studio.example/flags" }, ""},
+		{"protocol-relative redirect", func(c *Config) { c.Auth.PostLoginRedirect = "//evil.example" },
+			"auth.postLoginRedirect must be a path starting with a single / or an absolute http(s) URL"},
+		{"backslash redirect", func(c *Config) { c.Auth.PostLoginRedirect = `/\evil.example` }, "auth.postLoginRedirect"},
+		{"javascript redirect", func(c *Config) { c.Auth.PostLoginRedirect = "javascript:alert(1)" },
+			"auth.postLoginRedirect"},
+		{"relative path without slash", func(c *Config) { c.Auth.PostLoginRedirect = "flags" }, "auth.postLoginRedirect"},
+		{"absolute URL without host", func(c *Config) { c.Auth.PostLoginRedirect = "https:///flags" },
+			"auth.postLoginRedirect"},
 		{"trusted proxies as CIDR ranges", func(c *Config) {
 			c.Server.TrustedProxies = []string{"10.0.0.0/8", "2001:db8::/32"}
 		}, ""},
@@ -104,4 +115,29 @@ func TestConfigValidateReportsAllErrors(t *testing.T) {
 			assert.Equal(t, tt.want, strings.Contains(err.Error(), tt.msg))
 		})
 	}
+}
+
+// FuzzValidRedirect: an accepted redirect either stays on the origin it is
+// resolved against or is an absolute http(s) URL with a host.
+func FuzzValidRedirect(f *testing.F) {
+	for _, seed := range []string{"", "/", "/flags", "//evil.example", `/\evil.example`, "https://studio.example/x",
+		"javascript:alert(1)", "flags", "https:///x", "/a//b", "/%2F%2Fevil"} {
+		f.Add(seed)
+	}
+	base, err := url.Parse("https://studio.example/app/")
+	require.NoError(f, err)
+	f.Fuzz(func(t *testing.T, s string) {
+		if !validRedirect(s) || s == "" {
+			return
+		}
+		u, err := url.Parse(s)
+		require.NoError(t, err)
+		if u.IsAbs() {
+			assert.Contains(t, []string{"http", "https"}, u.Scheme)
+			assert.NotEmpty(t, u.Host)
+			return
+		}
+		assert.Equal(t, "studio.example", base.ResolveReference(u).Host)
+		assert.NotContains(t, s, `\`)
+	})
 }
