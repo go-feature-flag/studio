@@ -1999,6 +1999,10 @@ paths:
           description: no user with this email in the team's company
           schema:
             $ref: '#/definitions/model.APIResponse'
+        "409":
+          description: the team must keep at least one admin
+          schema:
+            $ref: '#/definitions/model.APIResponse'
       summary: Add a member to a team, or set the role of an existing member (team
         admin)
       tags:
@@ -2029,6 +2033,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "409":
+          description: the team must keep at least one admin
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Remove a member from a team (team admin)
@@ -2069,6 +2077,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "409":
+          description: the team must keep at least one admin
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Update a team member's role (team admin)

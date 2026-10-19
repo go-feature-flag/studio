@@ -183,6 +183,11 @@ func (s *TeamService) AddMember(
 	if u == nil || u.CompanyID == nil || *u.CompanyID != team.CompanyID {
 		return nil, false, newPublicError(ErrNotFound, "user with email "+req.Email+" not found")
 	}
+	if req.Role != model.RoleAdmin {
+		if err := s.ensureNotLastAdmin(ctx, teamID, u.ID); err != nil {
+			return nil, false, err
+		}
+	}
 	m, prev, err := s.teams.SetMember(ctx, teamID, u.ID, req.Role)
 	if err != nil {
 		return nil, false, writeError(err)
@@ -201,9 +206,37 @@ func (s *TeamService) AddMember(
 	return m, added, nil
 }
 
+// ensureNotLastAdmin fails with ErrConflict when userID is the team's only
+// explicit admin: Create never makes an admin-less team, and a demotion or
+// removal must not either (company admins would still inherit admin).
+// ponytail: check-then-act like the company guard; concurrent demotes of two
+// admins can both pass. Lock the admin rows in one tx if that ever matters.
+func (s *TeamService) ensureNotLastAdmin(ctx context.Context, teamID, userID string) error {
+	members, err := s.teams.ListMembers(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	admins, isAdmin := 0, false
+	for _, m := range members {
+		if m.Role == model.RoleAdmin {
+			admins++
+			isAdmin = isAdmin || m.UserID == userID
+		}
+	}
+	if isAdmin && admins == 1 {
+		return newPublicError(ErrConflict, "team must keep at least one admin")
+	}
+	return nil
+}
+
 func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID string, role model.Role) error {
 	if !role.IsValid() {
 		return model.ValidationErrors{errInvalidRole}
+	}
+	if role != model.RoleAdmin {
+		if err := s.ensureNotLastAdmin(ctx, teamID, userID); err != nil {
+			return err
+		}
 	}
 	prev, err := s.teams.UpdateMemberRole(ctx, teamID, userID, role)
 	if err != nil {
@@ -218,6 +251,9 @@ func (s *TeamService) UpdateMember(ctx context.Context, actorID, teamID, userID 
 }
 
 func (s *TeamService) RemoveMember(ctx context.Context, actorID, teamID, userID string) error {
+	if err := s.ensureNotLastAdmin(ctx, teamID, userID); err != nil {
+		return err
+	}
 	prev, err := s.teams.RemoveMember(ctx, teamID, userID)
 	if err != nil {
 		return writeError(err)

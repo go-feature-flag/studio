@@ -126,6 +126,7 @@ func (h *TeamHandler) AddableMembers(c *echo.Context) error {
 // @Failure 400  {object} model.APIResponse
 // @Failure 403  {object} model.APIResponse "insufficient role"
 // @Failure 404  {object} model.APIResponse "no user with this email in the team's company"
+// @Failure 409 {object} model.APIResponse "the team must keep at least one admin"
 // @Router  /teams/{id}/members [post]
 func (h *TeamHandler) AddMember(c *echo.Context) error {
 	var req model.AddMemberRequest
@@ -155,6 +156,7 @@ func (h *TeamHandler) AddMember(c *echo.Context) error {
 // @Failure 400  {object} model.APIResponse
 // @Failure 403  {object} model.APIResponse
 // @Failure 404  {object} model.APIResponse
+// @Failure 409 {object} model.APIResponse "the team must keep at least one admin"
 // @Router  /teams/{id}/members/{uid} [patch]
 func (h *TeamHandler) UpdateMember(c *echo.Context) error {
 	var req model.UpdateMemberRequest
@@ -178,6 +180,7 @@ func (h *TeamHandler) UpdateMember(c *echo.Context) error {
 // @Failure 400 {object} model.APIResponse "malformed id"
 // @Failure 403 {object} model.APIResponse
 // @Failure 404 {object} model.APIResponse
+// @Failure 409 {object} model.APIResponse "the team must keep at least one admin"
 // @Router  /teams/{id}/members/{uid} [delete]
 func (h *TeamHandler) RemoveMember(c *echo.Context) error {
 	claims := middleware.MustClaims(c)

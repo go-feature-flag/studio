@@ -2117,6 +2117,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
+                    },
+                    "409": {
+                        "description": "the team must keep at least one admin",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
                     }
                 }
             }
@@ -2161,6 +2167,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "the team must keep at least one admin",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2221,6 +2233,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "the team must keep at least one admin",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
