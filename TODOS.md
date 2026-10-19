@@ -17,7 +17,6 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[Auth] Harden the auth cookies against sibling subdomains.** With `auth.cookieDomain` set, a sibling subdomain can plant or overwrite the session cookie (cookie tossing). The state cookie is already host-only but a parent-domain cookie with the same name still wins. Host-only deployments could use the `__Host-` prefix (needs `Secure` and no Domain); the state cookie could use it whenever `cookieSecure` is on.
 - [ ] **[Auth] Validate `auth.postLoginRedirect`.** It's operator config, so not an open redirect, but `Validate()` should require a path starting with a single `/` or an absolute http(s) URL, so a typo like `//host` doesn't become a protocol-relative redirect (and silently get no CORS origin).
 - [ ] **[Auth] Add `Cache-Control: no-store` to the login redirects.** The callback URL carries the one-time code, but `no-store` is only set on `/api/v1`, not on `/auth/login` and `/auth/callback`. `Referrer-Policy: no-referrer` is already global.
 - [ ] **[Services] Keep a team admin.** `TeamService.Create` refuses an admin-less team, but `RemoveMember`, `UpdateMember` and `AddMember` (re-adding the last admin with a lower role) can remove or demote the last admin. Company admins still inherit admin, so nobody is locked out; either guard the last explicit admin or drop the "never admin-less" wording.

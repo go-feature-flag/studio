@@ -113,7 +113,7 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	// Public: the webui reads it before login.
 	e.GET("/api/v1/config", h.Config.Get)
 
-	auth := middleware.RequireAuth(s.Auth)
+	auth := middleware.RequireAuth(s.Auth, middleware.SessionCookieName(cfg.Auth))
 
 	// Off by default; when on, still requires a session (it is HTML served on
 	// the origin that holds the session cookie).

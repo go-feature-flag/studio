@@ -481,7 +481,7 @@ func (f routesFixture) req(method, path, actor, body string) *http.Request {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	}
 	if tok := f.tokens[actor]; tok != "" {
-		req.AddCookie(&http.Cookie{Name: middleware.SessionCookieName, Value: tok})
+		req.AddCookie(&http.Cookie{Name: middleware.SessionCookieName(config.AuthConfig{}), Value: tok})
 	}
 	return req
 }

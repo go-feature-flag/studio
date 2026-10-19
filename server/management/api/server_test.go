@@ -46,7 +46,7 @@ func TestLogoutUnderAPIPrefixWithoutSession(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 	var cleared *http.Cookie
 	for _, ck := range rec.Result().Cookies() {
-		if ck.Name == middleware.SessionCookieName {
+		if ck.Name == middleware.SessionCookieName(config.AuthConfig{}) {
 			cleared = ck
 		}
 	}
