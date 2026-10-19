@@ -29,25 +29,14 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// allTables lists every table created by the migrations, used to reset state
-// between tests. Order is irrelevant because the TRUNCATE uses CASCADE.
-var allTables = []string{
-	"audit_log",
-	"flagset_api_keys",
-	"flag_tags",
-	"flag_versions",
-	"flags",
-	"flagsets",
-	"team_members",
-	"teams",
-	"users",
-	"companies",
-}
-
+// The container is reaped by the testcontainers Ryuk reaper when the test
+// process exits, so the harness keeps no teardown of its own.
 type harness struct {
-	db        *repository.DB
-	terminate func()
-	err       error
+	db *repository.DB
+	// truncate resets every table the migrations created (read from
+	// pg_tables once they ran), so a new table can't keep rows between tests.
+	truncate string
+	err      error
 	// unavailable marks err as "container could not start" (e.g. no Docker),
 	// the only error worth skipping on.
 	unavailable bool
@@ -82,7 +71,9 @@ func StartPostgres(t *testing.T) *repository.DB {
 		// A docker-less environment is an expected condition: skip rather than fail.
 		t.Skipf("postgres test harness unavailable (is Docker running?): %v", shared.err)
 	}
-	truncateAll(t, shared.db)
+	if _, err := shared.db.Pool.Exec(context.Background(), shared.truncate); err != nil {
+		t.Fatalf("truncate tables: %v", err)
+	}
 	return shared.db
 }
 
@@ -119,15 +110,25 @@ func bootstrap() harness {
 		terminate()
 		return harness{err: err}
 	}
-	return harness{db: db, terminate: func() { db.Close(); terminate() }}
+	tables, err := migratedTables(ctx, db)
+	if err != nil {
+		db.Close()
+		terminate()
+		return harness{err: err}
+	}
+	// Order is irrelevant: CASCADE follows the foreign keys.
+	return harness{db: db, truncate: "TRUNCATE TABLE " + strings.Join(tables, ", ") + " RESTART IDENTITY CASCADE"}
 }
 
-func truncateAll(t *testing.T, db *repository.DB) {
-	t.Helper()
-	sql := "TRUNCATE TABLE " + strings.Join(allTables, ", ") + " RESTART IDENTITY CASCADE"
-	if _, err := db.Pool.Exec(context.Background(), sql); err != nil {
-		t.Fatalf("truncate tables: %v", err)
+// migratedTables lists the tables in the public schema, quoted, without
+// goose's version table.
+func migratedTables(ctx context.Context, db *repository.DB) ([]string, error) {
+	rows, err := db.Pool.Query(ctx, `SELECT format('%I', tablename) FROM pg_tables
+		WHERE schemaname = 'public' AND tablename <> 'goose_db_version' ORDER BY tablename`)
+	if err != nil {
+		return nil, err
 	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // EmptyDatabase creates a fresh database, without any migration applied, in
