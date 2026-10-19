@@ -40,28 +40,47 @@ func ensureNoCompany(ctx context.Context, companies *repository.CompanyRepo) err
 	return nil
 }
 
-// Create adds a company without an admin: it is super-admin only, and the
-// super admin then adds the first admin. Onboarding creates the company
-// together with its admin instead. In mono company mode every user without a
+// Create adds a company with its first admin (super admin only), in one
+// transaction, so no company is ever admin-less. The admin must be an existing
+// user without a company. In mono company mode every other user without a
 // company joins it as a member.
 func (s *CompanyService) Create(
-	ctx context.Context, actorID string, req *model.CreateCompanyRequest,
+	ctx context.Context, actorID string, req *model.CreateCompanyWithAdminRequest,
 ) (*model.Company, error) {
-	if err := validateName(&req.DisplayName, "displayName"); err != nil {
+	errs := validateName(&req.DisplayName, "displayName")
+	if strings.TrimSpace(req.AdminEmail) == "" {
+		errs = append(errs, model.ValidationError{Field: "adminEmail", Message: "company admin is required"})
+	}
+	if err := errs.Err(); err != nil {
 		return nil, err
+	}
+	admin, err := s.users.GetByEmail(ctx, req.AdminEmail)
+	if errors.Is(err, ErrNotFound) {
+		return nil, newPublicError(ErrNotFound, "user with email "+req.AdminEmail+" not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if admin.CompanyID != nil {
+		return nil, newPublicError(ErrConflict, "user with email "+req.AdminEmail+" already belongs to a company")
 	}
 	if s.mono {
 		if err := ensureNoCompany(ctx, s.companies); err != nil {
 			return nil, err
 		}
 	}
-	c, _, err := s.companies.CreateWithAdmin(ctx, req.DisplayName, req.Description, "", s.mono)
+	c, m, err := s.companies.CreateWithAdmin(ctx, req.DisplayName, req.Description, admin.ID, s.mono)
 	if err != nil {
-		return nil, err
+		// The user joined a company or was deleted since the check above.
+		return nil, writeError(err)
 	}
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &c.ID,
 		Action: model.AuditActionCreate, TargetType: model.AuditTargetCompany, TargetID: c.ID, After: c,
+	})
+	_ = s.audit.Record(ctx, nil, repository.AuditInput{
+		ActorUserID: &actorID, CompanyID: &c.ID,
+		Action: model.AuditActionCreate, TargetType: model.AuditTargetCompanyMember, TargetID: admin.ID, After: m,
 	})
 	return c, nil
 }

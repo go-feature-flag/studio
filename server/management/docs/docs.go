@@ -208,15 +208,15 @@ const docTemplate = `{
                 "tags": [
                     "companies"
                 ],
-                "summary": "Create a company (super admin only)",
+                "summary": "Create a company with its first admin (super admin only)",
                 "parameters": [
                     {
-                        "description": "company",
+                        "description": "company and admin email",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/model.CreateCompanyRequest"
+                            "$ref": "#/definitions/model.CreateCompanyWithAdminRequest"
                         }
                     }
                 ],
@@ -251,8 +251,14 @@ const docTemplate = `{
                             "$ref": "#/definitions/model.APIResponse"
                         }
                     },
+                    "404": {
+                        "description": "no user with adminEmail",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
                     "409": {
-                        "description": "a company already exists (mono company mode)",
+                        "description": "admin already in a company, or a company exists (mono company mode)",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -2811,6 +2817,26 @@ const docTemplate = `{
                 "displayName"
             ],
             "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string",
+                    "example": "Acme Corp"
+                }
+            }
+        },
+        "model.CreateCompanyWithAdminRequest": {
+            "type": "object",
+            "required": [
+                "adminEmail",
+                "displayName"
+            ],
+            "properties": {
+                "adminEmail": {
+                    "type": "string",
+                    "example": "jane@acme.com"
+                },
                 "description": {
                     "type": "string"
                 },

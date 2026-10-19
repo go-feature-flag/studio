@@ -175,6 +175,20 @@ definitions:
     required:
     - displayName
     type: object
+  model.CreateCompanyWithAdminRequest:
+    properties:
+      adminEmail:
+        example: jane@acme.com
+        type: string
+      description:
+        type: string
+      displayName:
+        example: Acme Corp
+        type: string
+    required:
+    - adminEmail
+    - displayName
+    type: object
   model.CreateFlagRequest:
     properties:
       comment:
@@ -805,12 +819,12 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: company
+      - description: company and admin email
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/model.CreateCompanyRequest'
+          $ref: '#/definitions/model.CreateCompanyWithAdminRequest'
       responses:
         "201":
           description: Created
@@ -829,11 +843,16 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/model.APIResponse'
-        "409":
-          description: a company already exists (mono company mode)
+        "404":
+          description: no user with adminEmail
           schema:
             $ref: '#/definitions/model.APIResponse'
-      summary: Create a company (super admin only)
+        "409":
+          description: admin already in a company, or a company exists (mono company
+            mode)
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Create a company with its first admin (super admin only)
       tags:
       - companies
   /companies/{companyId}:

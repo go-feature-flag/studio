@@ -28,25 +28,58 @@ func TestCompanyServiceCreate(t *testing.T) {
 	ctx := t.Context()
 	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
 
+	// founder seeds a user without a company to be a new company's admin.
+	founder := func(t *testing.T) *model.User {
+		t.Helper()
+		return testutil.SeedUser(t, db, strings.ReplaceAll(t.Name(), "/", "-")+"@acme.com", "F", false)
+	}
+
 	t.Run("happy path with audit", func(t *testing.T) {
-		c, err := svc.Create(ctx, actor.ID, &model.CreateCompanyRequest{
-			DisplayName: "Acme",
-			Description: "desc",
-		})
+		f := founder(t)
+		req := companyReq("Acme", f.Email)
+		req.Description = "desc"
+		c, err := svc.Create(ctx, actor.ID, req)
 		require.NoError(t, err)
 		assert.Equal(t, "Acme", c.DisplayName)
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompany))
+		assert.Equal(t, 1, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompanyMember), "admin added")
+		role, err := svc.Role(ctx, c.ID, f.ID)
+		require.NoError(t, err)
+		assert.Equal(t, model.CompanyRoleAdmin, role, "created with its admin")
 	})
 
-	t.Run("empty display name -> validation error", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, &model.CreateCompanyRequest{DisplayName: "  "})
-		assert.Equal(t, []string{"displayName"}, validationFields(t, err))
-	})
+	errTests := []struct {
+		name       string
+		req        *model.CreateCompanyWithAdminRequest
+		wantFields []string
+		wantErr    error
+		wantMsg    string
+	}{
+		{name: "blank name and admin", req: companyReq("  ", " "), wantFields: []string{"displayName", "adminEmail"}},
+		{name: "unknown admin", req: companyReq("X", "nobody@acme.com"), wantErr: service.ErrNotFound,
+			wantMsg: "user with email nobody@acme.com not found"},
+		{name: "admin already in a company", req: companyReq("X", "actor@acme.com"), wantErr: service.ErrConflict,
+			wantMsg: "user with email actor@acme.com already belongs to a company"},
+	}
+	testutil.SetCompanyMember(t, db, testutil.SeedCompany(t, db, "Taken").ID, actor.ID, model.CompanyRoleAdmin)
+	for _, tt := range errTests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompany)
+			_, err := svc.Create(ctx, actor.ID, tt.req)
+			if tt.wantFields != nil {
+				assert.Equal(t, tt.wantFields, validationFields(t, err))
+			} else {
+				assert.ErrorIs(t, err, tt.wantErr)
+				assert.Equal(t, tt.wantMsg, service.PublicMessage(err))
+			}
+			assert.Equal(t, before, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompany))
+		})
+	}
 
 	t.Run("display name limit counts characters, not bytes", func(t *testing.T) {
-		_, err := svc.Create(ctx, actor.ID, &model.CreateCompanyRequest{DisplayName: strings.Repeat("é", 120)})
+		_, err := svc.Create(ctx, actor.ID, companyReq(strings.Repeat("é", 120), founder(t).Email))
 		require.NoError(t, err)
-		_, err = svc.Create(ctx, actor.ID, &model.CreateCompanyRequest{DisplayName: strings.Repeat("é", 121)})
+		_, err = svc.Create(ctx, actor.ID, companyReq(strings.Repeat("é", 121), founder(t).Email))
 		assert.Equal(t, []string{"displayName"}, validationFields(t, err))
 	})
 }
@@ -275,9 +308,9 @@ func TestCompanyServiceMonoCompany(t *testing.T) {
 		repository.NewCompanyRepo(db), repository.NewUserRepo(db), repository.NewAuditRepo(db), true)
 	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
 
-	_, err := svc.Create(t.Context(), actor.ID, &model.CreateCompanyRequest{DisplayName: "Acme"})
+	_, err := svc.Create(t.Context(), actor.ID, companyReq("Acme", actor.Email))
 	require.NoError(t, err)
-	_, err = svc.Create(t.Context(), actor.ID, &model.CreateCompanyRequest{DisplayName: "Beta"})
+	_, err = svc.Create(t.Context(), actor.ID, companyReq("Beta", testutil.SeedUser(t, db, "b@acme.com", "B", false).Email))
 	assert.ErrorIs(t, err, service.ErrMonoCompanyExists)
 	assert.ErrorIs(t, err, service.ErrConflict)
 
@@ -305,9 +338,9 @@ func TestCompanyServiceQueryErrors(t *testing.T) {
 	cancel()
 	id := "00000000-0000-0000-0000-000000000000"
 
-	_, err := svc.Create(ctx, id, &model.CreateCompanyRequest{DisplayName: "x"})
+	_, err := svc.Create(ctx, id, companyReq("x", "a@x.com"))
 	assert.ErrorIs(t, err, context.Canceled)
-	_, err = mono.Create(ctx, id, &model.CreateCompanyRequest{DisplayName: "x"})
+	_, err = mono.Create(ctx, id, companyReq("x", "a@x.com"))
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = svc.List(ctx, id, false)
 	assert.ErrorIs(t, err, context.Canceled)

@@ -70,8 +70,8 @@ var routeCases = []struct {
 	// Companies.
 	{"GET", "/api/v1/companies", superAdmin, "", 200},
 	{"GET", "/api/v1/companies", companyAdmin, "", 403},
-	{"POST", "/api/v1/companies", superAdmin, `{"displayName":"New Co"}`, 201},
-	{"POST", "/api/v1/companies", companyAdmin, `{"displayName":"New Co"}`, 403},
+	{"POST", "/api/v1/companies", superAdmin, `{"displayName":"New Co","adminEmail":"newbie@acme.test"}`, 201},
+	{"POST", "/api/v1/companies", companyAdmin, `{"displayName":"New Co","adminEmail":"newbie@acme.test"}`, 403},
 	{"GET", "/api/v1/companies/{company}", member, "", 200},
 	{"GET", "/api/v1/companies/{company}", outsider, "", 403},
 	{"PATCH", "/api/v1/companies/{company}", companyAdmin, `{"description":"d"}`, 200},

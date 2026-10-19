@@ -34,17 +34,18 @@ func (h *CompanyHandler) List(c *echo.Context) error {
 }
 
 // Create godoc
-// @Summary Create a company (super admin only)
+// @Summary Create a company with its first admin (super admin only)
 // @Tags    companies
 // @Accept  json
-// @Param   body body model.CreateCompanyRequest true "company"
+// @Param   body body model.CreateCompanyWithAdminRequest true "company and admin email"
 // @Success 201 {object} model.APIResponse{data=model.Company}
 // @Failure 400 {object} model.APIResponse
 // @Failure 403 {object} model.APIResponse
-// @Failure 409 {object} model.APIResponse "a company already exists (mono company mode)"
+// @Failure 404 {object} model.APIResponse "no user with adminEmail"
+// @Failure 409 {object} model.APIResponse "admin already in a company, or a company exists (mono company mode)"
 // @Router  /companies [post]
 func (h *CompanyHandler) Create(c *echo.Context) error {
-	var req model.CreateCompanyRequest
+	var req model.CreateCompanyWithAdminRequest
 	if err := c.Bind(&req); err != nil {
 		return bindError(c, err)
 	}
