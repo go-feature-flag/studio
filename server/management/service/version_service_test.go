@@ -126,6 +126,16 @@ func TestVersionServiceRollback(t *testing.T) {
 		assert.Equal(t, 4, v.VersionNumber)
 	})
 
+	t.Run("rollback to the served payload writes nothing", func(t *testing.T) {
+		before := auditCount(t, db, model.AuditActionRollback, model.AuditTargetFlag)
+		v, created, err := svc.Rollback(ctx, actor.ID, flag.ID, 2, "")
+		require.NoError(t, err)
+		assert.False(t, created)
+		assert.Equal(t, 4, v.VersionNumber, "the current version, which serves v2's payload")
+		assert.Equal(t, 4, versionRowCount(t, db, flag.ID))
+		assert.Equal(t, before, auditCount(t, db, model.AuditActionRollback, model.AuditTargetFlag))
+	})
+
 	t.Run("rollback to missing version -> not found", func(t *testing.T) {
 		_, _, err := svc.Rollback(ctx, actor.ID, flag.ID, 99, "")
 		assert.ErrorIs(t, err, service.ErrNotFound)

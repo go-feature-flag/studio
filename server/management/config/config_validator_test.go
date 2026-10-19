@@ -67,6 +67,7 @@ func TestConfigValidate(t *testing.T) {
 		{"backslash redirect", func(c *Config) { c.Auth.PostLoginRedirect = `/\evil.example` }, "auth.postLoginRedirect"},
 		{"javascript redirect", func(c *Config) { c.Auth.PostLoginRedirect = "javascript:alert(1)" },
 			"auth.postLoginRedirect"},
+		{"unparsable redirect", func(c *Config) { c.Auth.PostLoginRedirect = "/%zz" }, "auth.postLoginRedirect"},
 		{"relative path without slash", func(c *Config) { c.Auth.PostLoginRedirect = "flags" }, "auth.postLoginRedirect"},
 		{"absolute URL without host", func(c *Config) { c.Auth.PostLoginRedirect = "https:///flags" },
 			"auth.postLoginRedirect"},

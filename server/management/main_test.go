@@ -120,6 +120,19 @@ func TestRun(t *testing.T) {
 		serveUntilHealthy(t, dbURL)
 	})
 
+	t.Run("failed migration stops startup", func(t *testing.T) {
+		t.Setenv("GOFF_MGMT_OIDC_ISSUER", issuer)
+		url := testutil.EmptyDatabase(t)
+		conn, err := pgx.Connect(t.Context(), url)
+		require.NoError(t, err)
+		// A table in the way of the first migration.
+		_, err = conn.Exec(t.Context(), `CREATE TABLE companies (id int)`)
+		require.NoError(t, err)
+		require.NoError(t, conn.Close(t.Context()))
+		err = run(t.Context(), []string{"--db.url", url, "--server.port", fmt.Sprint(freePort(t))})
+		assert.ErrorContains(t, err, "migrate:")
+	})
+
 	// A fresh database gets its schema at startup unless db.migrate is off.
 	for _, tt := range []struct {
 		migrate    string

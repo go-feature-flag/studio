@@ -186,6 +186,36 @@ func TestUserRepoUpsertFromOIDCConcurrentFirstLogin(t *testing.T) {
 	}
 }
 
+// RevokeSessions bumps the version only from the one the caller holds, so a
+// stale token can't revoke the sessions issued after it.
+func TestUserRepoRevokeSessions(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewUserRepo(db)
+	u := testutil.SeedUser(t, db, "u@example.com", "U", false)
+	version := func() int {
+		got, err := repo.GetByID(t.Context(), u.ID)
+		require.NoError(t, err)
+		return got.SessionVersion
+	}
+	require.Equal(t, 0, version())
+
+	tests := []struct {
+		name string
+		from int
+		want int
+	}{
+		{"current version is revoked", 0, 1},
+		{"stale version changes nothing", 0, 1},
+		{"the new current one is", 1, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, repo.RevokeSessions(t.Context(), u.ID, tt.from))
+			assert.Equal(t, tt.want, version())
+		})
+	}
+}
+
 func TestUserRepoLookups(t *testing.T) {
 	byID := func(id string) func(context.Context, *repository.UserRepo, *model.User) (*model.User, error) {
 		return func(ctx context.Context, r *repository.UserRepo, _ *model.User) (*model.User, error) {

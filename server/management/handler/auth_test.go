@@ -303,3 +303,30 @@ func TestAuthHandlerCookieNames(t *testing.T) {
 		})
 	}
 }
+
+// When the revocation can't be written the cookie is still cleared, but the
+// client learns the sessions are still live (500), instead of a silent 204.
+func TestAuthHandlerLogoutRevocationFailure(t *testing.T) {
+	s := newStack(t)
+	cfg := authConfig(fakeOIDC(t, "x@acme.com"))
+	auth := newAuthService(t, cfg, s.userRepo)
+	h := NewAuthHandler(cfg, auth, nil, nil, nil)
+	u := testutil.SeedUser(t, s.db, "out@acme.com", "Out", false)
+	token, err := auth.IssueJWT(u)
+	require.NoError(t, err)
+
+	c, rec := reqCtx(http.MethodPost, "")
+	canceled, cancel := context.WithCancel(c.Request().Context())
+	cancel()
+	c.SetRequest(c.Request().WithContext(canceled))
+	c.Request().AddCookie(&http.Cookie{Name: h.sessionCookie, Value: token})
+	require.NoError(t, h.Logout(c))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, "failed to revoke sessions", decodeResp(t, rec).Message)
+	session := cookieNamed(rec, h.sessionCookie)
+	require.NotNil(t, session)
+	assert.Negative(t, session.MaxAge, "the cookie is cleared anyway")
+	_, err = auth.Authenticate(t.Context(), token)
+	assert.NoError(t, err, "the session was not revoked")
+}

@@ -76,6 +76,26 @@ func TestCompanyServiceCreate(t *testing.T) {
 		})
 	}
 
+	t.Run("a failed insert leaves no company, admin or audit entry", func(t *testing.T) {
+		f := founder(t)
+		_, err := db.Pool.Exec(ctx, `
+			CREATE FUNCTION fail_company() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN RAISE EXCEPTION 'companies down'; END $$;
+			CREATE TRIGGER fail_company BEFORE INSERT ON companies FOR EACH STATEMENT EXECUTE FUNCTION fail_company();`)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_, _ = db.Pool.Exec(context.Background(),
+				`DROP TRIGGER fail_company ON companies; DROP FUNCTION fail_company();`)
+		})
+		before := auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompany)
+		_, err = svc.Create(ctx, actor.ID, companyReq("Down", f.Email))
+		require.ErrorContains(t, err, "companies down")
+		assert.Equal(t, before, auditCount(t, db, model.AuditActionCreate, model.AuditTargetCompany))
+		m, err := svc.Membership(ctx, f.ID)
+		require.NoError(t, err)
+		assert.Nil(t, m, "the admin was not attached")
+	})
+
 	t.Run("display name limit counts characters, not bytes", func(t *testing.T) {
 		_, err := svc.Create(ctx, actor.ID, companyReq(strings.Repeat("é", 120), founder(t).Email))
 		require.NoError(t, err)
