@@ -169,8 +169,10 @@ func (s *AuthService) Exchange(ctx context.Context, code, verifier, nonce string
 
 	// Super admin only from a verified email: with AllowUnverifiedEmail, anyone
 	// able to set their email at the IdP could otherwise claim an admin one.
-	u, err := s.users.UpsertFromOIDC(
-		ctx, claims.Email, claims.Name, claims.Picture, claims.Sub, verified && s.isAdminEmail(claims.Email))
+	u, err := s.users.UpsertFromOIDC(ctx, repository.OIDCLogin{
+		Email: claims.Email, Name: claims.Name, AvatarURL: claims.Picture, Sub: claims.Sub,
+		SuperAdmin: verified && s.isAdminEmail(claims.Email),
+	})
 	if errors.Is(err, repository.ErrMissingIdentity) {
 		return nil, "", fmt.Errorf("%w: %w", ErrLoginRejected, err)
 	}

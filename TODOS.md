@@ -17,7 +17,6 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[Repository] Use a params struct for `UpsertFromOIDC`.** Its four positional strings (email, name, avatarURL, sub) let a swapped email and sub compile. Cover `AvatarURL`, `LastLoginAt` and `UpdatedAt` in the tests while there (they always pass `""` today).
 - [ ] **[Repo] Add `CONTRIBUTING.md`.** The checklist in `.github/pull_request_template.md` links to it, so that link is broken today.
 
 ## P3 — Nice to have or blocked
