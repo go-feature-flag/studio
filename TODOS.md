@@ -17,7 +17,6 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[Docs] Write `docs/reference/api.md`.** The API description (`main.go`) and `handler/auth.go` point readers to it, but the file doesn't exist.
 - [ ] **[Database] Test the migration round-trip and the flag type parity.** Nothing runs Down then Up again. The parity check in `repository/flag_repo_test.go` covers three payload types and looks the payload up by the type SQL returned, so a wrong SQL type still passes; run the `TestInferFlagType` table cases through `flag_versions.flag_type` keyed by flag name (lax jsonpath mode once typed `["a"]` as `string`).
 - [ ] **[Repository] Build the test-harness `TRUNCATE` from the schema.** `allTables` in `internal/testutil/postgres.go` is complete today but hard-coded, so a new table without a foreign key to it would keep rows between tests. Build it from `pg_tables` (minus `goose_db_version`). The `harness.terminate` field is assigned but never read: drop it, or call it from a `TestMain` helper for runs with Ryuk disabled.
 - [ ] **[Repository] Use a params struct for `UpsertFromOIDC`.** Its four positional strings (email, name, avatarURL, sub) let a swapped email and sub compile. Cover `AvatarURL`, `LastLoginAt` and `UpdatedAt` in the tests while there (they always pass `""` today).
