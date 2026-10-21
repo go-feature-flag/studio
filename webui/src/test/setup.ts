@@ -4,7 +4,7 @@ import { server } from "./msw-server";
 
 // jsdom doesn't implement these browser APIs that some components rely on:
 // matchMedia (theme-aware CodeBlock), the pointer-capture / ResizeObserver /
-// scrollIntoView APIs (Radix Select) and IntersectionObserver (Embla carousel). Polyfill them so those components render
+// scrollIntoView APIs (Radix Select). Polyfill them so those components render
 // and respond to interaction in tests. Tests that need specific matchMedia
 // behavior can still override window.matchMedia locally.
 if (!window.matchMedia) {
@@ -34,16 +34,6 @@ if (!globalThis.ResizeObserver) {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
-}
-if (!globalThis.IntersectionObserver) {
-  globalThis.IntersectionObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-    takeRecords() {
-      return [];
-    }
-  } as unknown as typeof IntersectionObserver;
 }
 
 // Node 25 ships its own global localStorage, which shadows jsdom's and has no
