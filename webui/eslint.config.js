@@ -8,8 +8,16 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  // Vendored third-party components (copied from react-querybuilder-shadcn-ui).
-  { ignores: ["dist", "src/components/react-querybuilder-shadcn-ui/**"] },
+  // Build output, plus vendored third-party components (copied from
+  // react-querybuilder-shadcn-ui).
+  {
+    ignores: [
+      "dist",
+      "storybook-static",
+      "coverage",
+      "src/components/react-querybuilder-shadcn-ui/**",
+    ],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
