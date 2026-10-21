@@ -24,6 +24,14 @@ export function getCachedCompany(): CompanyMembership | null {
   return cachedCompany;
 }
 
+// seedCachedIdentity primes the identity cache without calling /auth/me, so
+// Storybook can render identity-dependent components (switchers, user menu).
+export function seedCachedIdentity(me: MeResponse): void {
+  cachedUser = me.user;
+  cachedMembership = me.membership;
+  cachedCompany = me.company ?? null;
+}
+
 export function clearCachedUser(): void {
   cachedUser = null;
   cachedMembership = null;

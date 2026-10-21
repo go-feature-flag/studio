@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "@/test/msw-server";
-import { authProvider, clearCachedUser } from "./auth";
+import {
+  authProvider,
+  clearCachedUser,
+  getCachedCompany,
+  getCachedMembership,
+  getCachedUser,
+  seedCachedIdentity,
+} from "./auth";
 import { API_URL } from "./constants";
 
 const meEndpoint = `${API_URL}/auth/me`;
@@ -76,5 +83,19 @@ describe("authProvider", () => {
     // After logout, /auth/me would now be re-fetched and still returns sample in this test;
     // we only assert cache was cleared by reading post-logout result.
     expect(identity).toBeDefined();
+  });
+
+  it("seedCachedIdentity fills the cache without calling /auth/me", async () => {
+    // No MSW handler: any request would fail the test (onUnhandledRequest: "error").
+    seedCachedIdentity({
+      user: sampleUser,
+      membership: [{ teamId: "t1", teamName: "Core", role: "admin" }],
+    });
+    expect(getCachedUser()).toMatchObject({ id: "u1" });
+    expect(getCachedMembership()).toEqual([
+      { teamId: "t1", teamName: "Core", role: "admin" },
+    ]);
+    expect(getCachedCompany()).toBeNull();
+    expect(await authProvider.getIdentity!({})).toMatchObject({ id: "u1" });
   });
 });
