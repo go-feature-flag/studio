@@ -36,7 +36,7 @@ export const Disabled: Story = {
 };
 
 export const Invalid: Story = {
-  args: { "aria-invalid": true, value: "not-an-email" },
+  args: { "aria-invalid": true, defaultValue: "not-an-email" },
 };
 
 export const File: Story = {

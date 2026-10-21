@@ -25,7 +25,7 @@ export const Disabled: Story = {
 };
 
 export const Invalid: Story = {
-  args: { "aria-invalid": true, value: "This field has an error" },
+  args: { "aria-invalid": true, defaultValue: "This field has an error" },
 };
 
 export const WithLabel: Story = {
