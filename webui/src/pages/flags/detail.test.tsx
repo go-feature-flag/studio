@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 
@@ -9,6 +9,14 @@ const h = vi.hoisted(() => ({
   mutate: vi.fn(),
   copyToClipboard: vi.fn().mockResolvedValue(true),
   perms: { canEdit: false, role: undefined as string | undefined, admin: false },
+  // Per-test overrides merged into the mocked useFlagForm() result.
+  form: {} as Record<string, unknown>,
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { success: h.toastSuccess, error: h.toastError },
 }));
 
 vi.mock("@refinedev/core", async () => {
@@ -76,6 +84,7 @@ vi.mock("@/components/flags/flag-form", () => ({
     setCustomMetadata: vi.fn(),
     buildPayload: vi.fn(),
     reset: vi.fn(),
+    ...h.form,
   }),
   Field: ({
     label,
@@ -128,8 +137,11 @@ function makeFlag(disabled = false) {
   };
 }
 
-function wireData(flag: ReturnType<typeof makeFlag>) {
+const refetchFlag = vi.fn();
+
+function wireData(flag: ReturnType<typeof makeFlag> | undefined, isLoading = false) {
   h.useCustomImpl = (args: { url: string }) => {
+    if (args.url.endsWith("/tags")) return { query: { data: { data: ["beta"] } } };
     if (args.url.endsWith("/versions"))
       return {
         query: {
@@ -153,7 +165,7 @@ function wireData(flag: ReturnType<typeof makeFlag>) {
     if (args.url.includes("/flagsets/"))
       return { query: { data: { data: FLAGSET }, isLoading: false } };
     return {
-      query: { data: { data: flag }, isLoading: false, refetch: vi.fn() },
+      query: { data: flag && { data: flag }, isLoading, refetch: refetchFlag },
     };
   };
 }
@@ -164,6 +176,7 @@ function renderPage() {
       <Routes>
         <Route path="/flags/:id" element={<FlagDetailPage />} />
         <Route path="/flagsets/:id" element={<div>flagset page</div>} />
+        <Route path="/flags" element={<div>flags list page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -175,6 +188,10 @@ async function openSettingsTab(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   h.mutate.mockReset();
+  h.form = {};
+  refetchFlag.mockClear();
+  h.toastSuccess.mockClear();
+  h.toastError.mockClear();
   h.copyToClipboard.mockClear().mockResolvedValue(true);
   h.perms = { canEdit: false, role: undefined, admin: false };
   wireData(makeFlag(false));
@@ -571,5 +588,203 @@ describe("FlagDetailPage evaluate tab", () => {
     const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(ta.value).toContain("cfg-key");
     expect(ta.value).not.toContain("thomas@gofeatureflag.org");
+  });
+});
+
+describe("FlagDetailPage load states", () => {
+  const tests = [
+    { name: "shows a loading card", isLoading: true, want: "Loading..." },
+    { name: "shows not found when the flag is missing", isLoading: false, want: "Flag not found." },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      wireData(undefined, tt.isLoading);
+      renderPage();
+      expect(screen.getByText(tt.want)).toBeInTheDocument();
+      // The breadcrumb falls back to the route id.
+      expect(screen.getByText("flag-1")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+    });
+  }
+
+  it("renders a flag whose payload has no metadata or targeting", () => {
+    const flag = makeFlag(false);
+    flag.payload = { variations: { on: true, off: false } } as never;
+    wireData(flag);
+    renderPage();
+    expect(screen.queryByText(/alice/)).not.toBeInTheDocument();
+    expect(screen.queryByText("A feature")).not.toBeInTheDocument();
+    expect(screen.getByText("No targeting rules — every evaluation falls through to the default rule.")).toBeInTheDocument();
+  });
+});
+
+describe("FlagDetailPage variations tab", () => {
+  it("shows the variations editor to editors", async () => {
+    h.perms = { canEdit: true, role: "editor", admin: true };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: /Variations/ }));
+
+    expect(screen.getByTestId("variations-editor")).toBeInTheDocument();
+    expect(screen.getByText("Type can't be changed after creation")).toBeInTheDocument();
+  });
+
+  it("shows read-only variation values to viewers", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: /Variations/ }));
+
+    expect(screen.queryByTestId("variations-editor")).not.toBeInTheDocument();
+    expect(screen.getByText("true")).toBeInTheDocument();
+    expect(screen.getByText("false")).toBeInTheDocument();
+  });
+});
+
+describe("FlagDetailPage history and code sample tabs", () => {
+  it("shows the version timeline", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(screen.getByText("Timeline")).toBeInTheDocument();
+    expect(screen.getByText("v1 · changes")).toBeInTheDocument();
+  });
+
+  it("shows the SDK code sample", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Code sample" }));
+
+    expect(screen.getByRole("button", { name: "Python" })).toBeInTheDocument();
+  });
+});
+
+describe("FlagDetailPage save bar", () => {
+  beforeEach(() => {
+    h.perms = { canEdit: true, role: "editor", admin: true };
+  });
+
+  it("is hidden while the form is pristine", () => {
+    renderPage();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
+  it("is hidden for read-only viewers even when the form is dirty", () => {
+    h.perms = { canEdit: false, role: undefined, admin: false };
+    h.form = { isDirty: true };
+    renderPage();
+    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
+  it("saves the form as a new version with the trimmed comment", async () => {
+    h.form = { isDirty: true, buildPayload: () => ({ variations: { a: 1 } }) };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+
+    await user.type(screen.getByPlaceholderText("Describe this change (optional)"), "  tweak  ");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(h.mutate).toHaveBeenCalledTimes(1);
+    const [args, cbs] = h.mutate.mock.calls[0];
+    expect(args.url).toMatch(/\/flags\/flag-1$/);
+    expect(args.method).toBe("put");
+    expect(args.values).toEqual({ comment: "tweak", payload: { variations: { a: 1 } } });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    act(() => cbs.onSuccess());
+    expect(h.toastSuccess).toHaveBeenCalledWith("Flag saved");
+    expect(refetchFlag).toHaveBeenCalled();
+    expect(screen.getByPlaceholderText("Describe this change (optional)")).toHaveValue("");
+  });
+
+  it("reports a failed save and re-enables the button", async () => {
+    h.form = { isDirty: true };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    act(() => h.mutate.mock.calls[0][1].onError(new Error("conflict")));
+    expect(h.toastError).toHaveBeenCalledWith("Failed to save flag", { description: "conflict" });
+    expect(refetchFlag).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  it("blocks saving an invalid form", () => {
+    h.form = { isDirty: true, valid: false };
+    renderPage();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(screen.getByText("Fix validation errors before saving.")).toBeInTheDocument();
+  });
+
+  it("discards the changes", async () => {
+    const reset = vi.fn();
+    h.form = { isDirty: true, reset };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+    expect(reset).toHaveBeenCalled();
+  });
+});
+
+describe("FlagDetailPage danger zone results", () => {
+  beforeEach(() => {
+    h.perms = { canEdit: true, role: "editor", admin: true };
+  });
+
+  async function confirmDisable(user: ReturnType<typeof userEvent.setup>) {
+    await openSettingsTab(user);
+    await user.click(screen.getByRole("button", { name: "Disable flag" }));
+    const dialog = screen.getByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  }
+
+  it("refreshes the flag after toggling it", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await confirmDisable(user);
+
+    act(() => h.mutate.mock.calls[0][1].onSuccess());
+    expect(h.toastSuccess).toHaveBeenCalledWith("Flag disabled");
+    expect(refetchFlag).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("reports a failed toggle", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await confirmDisable(user);
+
+    act(() => h.mutate.mock.calls[0][1].onError(new Error("denied")));
+    expect(h.toastError).toHaveBeenCalledWith("Failed to update flag", { description: "denied" });
+    expect(refetchFlag).not.toHaveBeenCalled();
+  });
+
+  async function confirmDelete(user: ReturnType<typeof userEvent.setup>) {
+    await openSettingsTab(user);
+    await user.click(screen.getByRole("button", { name: "Delete flag" }));
+    const dialog = screen.getByRole("alertdialog");
+    await user.type(within(dialog).getByRole("textbox"), "my-feature");
+    await user.click(within(dialog).getByRole("button", { name: "Delete flag" }));
+  }
+
+  it("returns to the flags list after deleting", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await confirmDelete(user);
+
+    act(() => h.mutate.mock.calls[0][1].onSuccess());
+    expect(h.toastSuccess).toHaveBeenCalledWith("Flag deleted");
+    expect(await screen.findByText("flags list page")).toBeInTheDocument();
+  });
+
+  it("stays on the page when deleting fails", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await confirmDelete(user);
+
+    act(() => h.mutate.mock.calls[0][1].onError(new Error("in use")));
+    expect(h.toastError).toHaveBeenCalledWith("Failed to delete flag", { description: "in use" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.queryByText("flags list page")).not.toBeInTheDocument();
   });
 });

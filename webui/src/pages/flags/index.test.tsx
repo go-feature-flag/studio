@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import type { FlagInstance } from "@/types/api";
@@ -7,8 +7,10 @@ import type { FlagInstance } from "@/types/api";
 // --- Mocks ---------------------------------------------------------------
 
 const refetch = vi.fn();
+const ownersRefetch = vi.fn();
 const useCustomMock = vi.fn();
 const mutateMock = vi.fn();
+const team = vi.hoisted(() => ({ id: "team-1" as string | undefined }));
 
 vi.mock("@refinedev/core", () => ({
   useTranslate: () => (key: string) => key,
@@ -19,7 +21,7 @@ vi.mock("@refinedev/core", () => ({
 }));
 
 vi.mock("@/hooks/use-active-team", () => ({
-  useActiveTeam: () => ({ activeTeamId: "team-1" }),
+  useActiveTeam: () => ({ activeTeamId: team.id }),
 }));
 
 vi.mock("@/hooks/use-recently-edited-flags", () => ({
@@ -36,8 +38,11 @@ vi.mock("@/components/refine-ui/views/list-view", () => ({
   ListView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+// A stand-in that only exposes the onCreated callback the page hands the wizard.
 vi.mock("./flag-wizard", () => ({
-  FlagWizard: () => null,
+  FlagWizard: ({ onCreated }: { onCreated: () => void }) => (
+    <button onClick={onCreated}>fake-wizard-created</button>
+  ),
 }));
 
 import { FlagsPage } from "./index";
@@ -118,7 +123,13 @@ function mockApi(rows: FlagInstance[] | undefined, pageInfo = { total: rows?.len
           },
         },
       };
-    if (args.url.endsWith("/owners")) return { query: { data: { data: [{ id: "u-alice", name: "alice" }, { id: "u-bob", name: "bob" }] } }, refetch };
+    if (args.url.endsWith("/owners"))
+      return {
+        query: {
+          data: { data: [{ id: "u-alice", name: "alice" }, { id: "u-bob", name: "bob" }] },
+          refetch: ownersRefetch,
+        },
+      };
     return {
       query: { data: rows && { data: { data: rows, page: 1, pageSize: 50, ...pageInfo } }, refetch },
     };
@@ -551,5 +562,121 @@ describe("FlagsPage - sorting", () => {
   it("ignores an unknown sort value", () => {
     renderPage("/flags?sort=constructor");
     expect(lastFlagsQuery().has("sort")).toBe(false);
+  });
+});
+
+describe("FlagsPage - state toggle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApi(flags);
+  });
+
+  async function confirmToggleOf(user: ReturnType<typeof userEvent.setup>, flagName: string) {
+    const row = screen.getByText(flagName).closest("tr") as HTMLElement;
+    await user.click(within(row).getByRole("switch"));
+    return screen.getByRole("alertdialog");
+  }
+
+  const tests = [
+    {
+      name: "disables an enabled flag",
+      flag: "my-first-flag",
+      title: "flag.confirmToggle.disableTitle",
+      url: /\/flags\/flag-abc\/disable$/,
+      disabled: true,
+    },
+    {
+      name: "enables a disabled flag",
+      flag: "my-second-flag",
+      title: "flag.confirmToggle.enableTitle",
+      url: /\/flags\/flag-xyz\/disable$/,
+      disabled: false,
+    },
+  ];
+  for (const tt of tests) {
+    it(`${tt.name} after confirmation and refreshes the list`, async () => {
+      const user = userEvent.setup();
+      renderPage();
+      const dialog = await confirmToggleOf(user, tt.flag);
+      expect(within(dialog).getByText(tt.title)).toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole("button", { name: "flag.confirmToggle.confirm" }));
+      expect(mutateMock).toHaveBeenCalledTimes(1);
+      const [args, cbs] = mutateMock.mock.calls[0];
+      expect(args.url).toMatch(tt.url);
+      expect(args.values).toEqual({ disabled: tt.disabled });
+
+      act(() => cbs.onSuccess());
+      expect(refetch).toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    });
+  }
+
+  it("closes the dialog without refreshing when the toggle fails", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await confirmToggleOf(user, "my-first-flag");
+    await user.click(within(dialog).getByRole("button", { name: "flag.confirmToggle.confirm" }));
+
+    act(() => mutateMock.mock.calls[0][1].onError(new Error("nope")));
+    expect(refetch).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("does nothing when the confirmation is cancelled", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const dialog = await confirmToggleOf(user, "my-first-flag");
+    await user.click(within(dialog).getByRole("button", { name: "common.cancel" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("FlagsPage - misc states", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    team.id = "team-1";
+    mockApi(flags);
+  });
+
+  it("asks to pick a team when none is active", () => {
+    team.id = undefined;
+    renderPage();
+    expect(screen.getByText("flag.noTeam")).toBeInTheDocument();
+    expect(screen.queryByText("fake-wizard-created")).not.toBeInTheDocument();
+    team.id = "team-1";
+  });
+
+  it("shows a loading row while the flags load", () => {
+    useCustomMock.mockImplementation(() => ({ query: { isLoading: true, refetch } }));
+    renderPage();
+    expect(screen.getByText("common.loading")).toBeInTheDocument();
+  });
+
+  it("refreshes flags and owners after the wizard creates a flag", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "fake-wizard-created" }));
+    expect(refetch).toHaveBeenCalled();
+    expect(ownersRefetch).toHaveBeenCalled();
+  });
+
+  it("removes a tag filter when its chip is clicked again", async () => {
+    mockApi([{ ...flags[0], tags: ["beta", "prod"] }]);
+    const user = userEvent.setup();
+    renderPage("/flags?tags=beta,prod");
+    const row = screen.getByText("my-first-flag").closest("tbody") as HTMLElement;
+    await user.click(within(row).getByText("beta"));
+    expect(screen.getByTestId("location-search").textContent).toBe("?tags=prod");
+  });
+
+  it("drops the page param when going back to the first page", async () => {
+    mockApi(flags, { total: 120, totalPages: 3 });
+    const user = userEvent.setup();
+    renderPage("/flags?page=2");
+    await user.click(screen.getByRole("button", { name: "Go to previous page" }));
+    expect(screen.getByTestId("location-search").textContent).not.toContain("page=");
   });
 });
