@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router";
 import type { Flagset } from "@/types/api";
 
 // Translate stub resolves real i18n keys so the stat labels ("flags",
@@ -72,5 +73,53 @@ describe("FlagsetCard stats", () => {
   it("shows the api key count in the footer", () => {
     renderCard(flagset({ apiKeyCount: 2, flagCount: 1, enabledFlagCount: 1 }));
     expect(screen.getByText("2")).toBeTruthy();
+  });
+});
+
+describe("FlagsetCard interactions", () => {
+  const renderRouted = (fs: Flagset, editable: boolean, onDelete = vi.fn()) =>
+    render(
+      <MemoryRouter initialEntries={["/flagsets"]}>
+        <Routes>
+          <Route
+            path="/flagsets"
+            element={<FlagsetCard fs={fs} editable={editable} onDelete={onDelete} />}
+          />
+          <Route path="/flagsets/:id" element={<div>SETTINGS PAGE</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+  it("navigates to the flagset settings on click", async () => {
+    renderRouted(flagset({ id: "fs-42" }), false);
+    await userEvent.click(screen.getByText("Prod"));
+    expect(screen.getByText("SETTINGS PAGE")).toBeInTheDocument();
+  });
+
+  it("shows the created date when set", () => {
+    renderRouted(flagset({ createdAt: "2026-01-02T00:00:00Z" }), false);
+    expect(screen.getByText(/· created/)).toBeInTheDocument();
+  });
+
+  const tests = [
+    { name: "read-only cards have no actions menu", editable: false, wantMenu: false },
+    { name: "editable cards expose the actions menu", editable: true, wantMenu: true },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      renderRouted(flagset({}), tt.editable);
+      expect(screen.queryByRole("button", { name: "Actions" }) !== null).toBe(tt.wantMenu);
+    });
+  }
+
+  it("delete calls onDelete without navigating", async () => {
+    const onDelete = vi.fn();
+    const fs = flagset({ id: "fs-7" });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderRouted(fs, true, onDelete);
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(onDelete).toHaveBeenCalledWith(fs);
+    expect(screen.queryByText("SETTINGS PAGE")).toBeNull();
   });
 });
