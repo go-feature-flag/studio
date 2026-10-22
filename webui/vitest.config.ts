@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { coverageConfigDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
@@ -17,6 +17,18 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
+      // Without this, build output (storybook-static/, dist/) built earlier in CI is counted at 0%.
+      include: ["src/**"],
+      exclude: [
+        ...coverageConfigDefaults.exclude,
+        "src/**/*.stories.tsx",
+        "src/test/**",
+        // Vendored from the shadcn and refine registries, plus app bootstrap wiring.
+        "src/components/ui/**",
+        "src/components/refine-ui/**",
+        "src/App.tsx",
+        "src/index.tsx",
+      ],
     },
   },
 });

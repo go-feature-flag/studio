@@ -47,4 +47,9 @@ ignore:
   - "webui/src/test/**"
   # shadcn components copied in as-is; covered by their stories, not unit tests.
   - "webui/src/components/ui/**"
+  # Copied from refine's shadcn registry, same as components/ui.
+  - "webui/src/components/refine-ui/**"
+  # App bootstrap wiring (providers and routes), exercised end to end, not by unit tests.
+  - "webui/src/App.tsx"
+  - "webui/src/index.tsx"
   - "**/*.stories.tsx"

@@ -19,6 +19,8 @@ _Nothing open._
 
 - [ ] **[Auth] Return a 4xx with a reason when the OIDC subject changed.** When an email is already bound to a different `oidc_sub`, `UpsertFromOIDC` returns `ErrIdentityMismatch`. The callback (`handler/auth.go`) only maps `ErrLoginRejected` to 400, so the user gets a 500 `{"message":"login failed"}` with nothing to act on. That happens in dev whenever the Keycloak container is recreated against an existing database. Map `ErrIdentityMismatch` to a 403 with a message saying the account is linked to another identity.
 
+- [ ] **[WebUI] Raise page test coverage.** webui line coverage is 57%. The gaps are pages with few or no tests: `pages/flagsets` (32%, ~1,000 uncovered lines), `pages/company` (14%, ~990), `pages/flags` (64%, ~865; `flag-wizard.tsx` and `flag-detail-history-tab.tsx` are at 0%), `pages/audit-log` (18%, ~640). Any PR touching them will struggle with the 80% patch target. Add MSW-backed render tests per page, like `pages/flags/index.test.tsx`.
+
 ## P3 — Nice to have or blocked
 
 - [ ] **[Roles] Rename `User.Role()`.** It returns a `CompanyRole`, while `Role` is also the name of the team role type, so callers can mix the two up. Something like `CompanyRoleOrEmpty()` is clearer.
