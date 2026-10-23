@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { TagInput } from "./tag-input";
 
 // Controlled harness: TagInput is controlled, so re-render with the new value
@@ -90,4 +90,56 @@ describe("TagInput", () => {
       screen.getByText("Tags can be at most 3 characters"),
     ).toBeInTheDocument();
   });
+});
+
+describe("TagInput draft and dropdown lifecycle", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("clears the draft without adding when a duplicate is committed with comma", () => {
+    const { onChange, input } = renderControlled(["beta"]);
+    fireEvent.change(input(), { target: { value: "beta" } });
+    fireEvent.keyDown(input(), { key: "," });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(input().value).toBe("");
+  });
+
+  const tests: {
+    name: string;
+    act: (input: HTMLInputElement) => void;
+    wantOpen: boolean;
+  }[] = [
+    {
+      name: "Escape closes the dropdown",
+      act: (input) => fireEvent.keyDown(input, { key: "Escape" }),
+      wantOpen: false,
+    },
+    {
+      name: "blur closes the dropdown after a short delay",
+      act: (input) => {
+        fireEvent.blur(input);
+        act(() => vi.advanceTimersByTime(120));
+      },
+      wantOpen: false,
+    },
+    {
+      name: "a mousedown inside the dropdown cancels the pending close",
+      act: (input) => {
+        fireEvent.blur(input);
+        fireEvent.mouseDown(screen.getByText("canary"));
+        act(() => vi.advanceTimersByTime(120));
+      },
+      wantOpen: true,
+    },
+  ];
+
+  for (const tt of tests) {
+    it(tt.name, () => {
+      vi.useFakeTimers();
+      const { input } = renderControlled([], ["canary"]);
+      fireEvent.focus(input());
+      expect(screen.getByText("canary")).toBeInTheDocument();
+      tt.act(input());
+      expect(screen.queryByText("canary") !== null).toBe(tt.wantOpen);
+    });
+  }
 });

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import {
   OutcomeEditor,
   newOutcome,
@@ -115,4 +115,97 @@ describe("OutcomeEditor progressive variation error state", () => {
     expect(initial).toHaveAttribute("aria-invalid", "true");
     expect(end).toHaveAttribute("aria-invalid", "false");
   });
+});
+
+describe("OutcomeEditor interactions", () => {
+  const renderEditor = (outcome: Outcome) => {
+    const onChange = vi.fn();
+    render(
+      <OutcomeEditor
+        t={t}
+        variationNames={variationNames}
+        outcome={outcome}
+        onChange={onChange}
+      />,
+    );
+    return onChange;
+  };
+
+  const tests: {
+    name: string;
+    outcome: () => Outcome;
+    act: () => void;
+    want: (o: Outcome) => void;
+  }[] = [
+    {
+      name: "mode switch reports the new mode",
+      outcome: () => newOutcome(),
+      act: () => fireEvent.click(screen.getByText("flag.wizard.percentage")),
+      want: (o) => expect(o.mode).toBe("percentage"),
+    },
+    {
+      name: "typing a percentage clamps to the remaining room",
+      outcome: () => ({ ...percentageOutcome(), percentages: { off: 70 } }),
+      act: () =>
+        fireEvent.change(screen.getByLabelText("on percentage"), {
+          target: { value: "50" },
+        }),
+      want: (o) => expect(o.percentages).toEqual({ on: 30, off: 70 }),
+    },
+    {
+      name: "sliding a percentage updates that variation",
+      outcome: () => ({ ...percentageOutcome(), percentages: { on: 10, off: 20 } }),
+      act: () =>
+        fireEvent.keyDown(screen.getAllByRole("slider")[1], { key: "ArrowRight" }),
+      want: (o) => expect(o.percentages).toEqual({ on: 10, off: 21 }),
+    },
+    {
+      name: "editing the progressive start date updates prog",
+      outcome: () => progressiveOutcome(),
+      act: () =>
+        fireEvent.change(document.querySelectorAll('input[type="datetime-local"]')[0], {
+          target: { value: "2030-01-02T03:04" },
+        }),
+      want: (o) => expect(o.prog.startDate).toBe("2030-01-02T03:04"),
+    },
+    {
+      name: "editing the progressive end date updates prog",
+      outcome: () => progressiveOutcome(),
+      act: () =>
+        fireEvent.change(document.querySelectorAll('input[type="datetime-local"]')[1], {
+          target: { value: "2030-02-03T04:05" },
+        }),
+      want: (o) => expect(o.prog.endDate).toBe("2030-02-03T04:05"),
+    },
+    {
+      name: "sliding the progressive range updates both bounds",
+      outcome: () => progressiveOutcome({ initialPct: 10, endPct: 90 }),
+      act: () =>
+        fireEvent.keyDown(screen.getAllByRole("slider")[0], { key: "ArrowRight" }),
+      want: (o) => expect([o.prog.initialPct, o.prog.endPct]).toEqual([11, 90]),
+    },
+  ];
+
+  for (const tt of tests) {
+    it(tt.name, () => {
+      const onChange = renderEditor(tt.outcome());
+      tt.act();
+      expect(onChange).toHaveBeenCalledTimes(1);
+      tt.want(onChange.mock.calls[0][0]);
+    });
+  }
+
+  const sumTests: { name: string; percentages: Record<string, number>; wantError: boolean }[] = [
+    { name: "a total of 100 is neutral", percentages: { on: 40, off: 60 }, wantError: false },
+    { name: "a total below 100 is flagged", percentages: { on: 40 }, wantError: true },
+  ];
+
+  for (const tt of sumTests) {
+    it(`percent sum: ${tt.name}`, () => {
+      renderEditor({ ...percentageOutcome(), percentages: tt.percentages });
+      expect(
+        screen.getByText("flag.wizard.percentSum").classList.contains("text-destructive"),
+      ).toBe(tt.wantError);
+    });
+  }
 });

@@ -1,5 +1,24 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cloneElement, createElement, type ReactElement } from "react";
+
+// jsdom has no layout, so ResponsiveContainer measures 0x0 and recharts draws
+// nothing. Tests that need the chart itself flip `sized` to render it at a
+// fixed size instead.
+const chart = vi.hoisted(() => ({ sized: false }));
+vi.mock("@/components/ui/chart", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/chart")>();
+  return {
+    ...actual,
+    ChartContainer: (props: Parameters<typeof actual.ChartContainer>[0]) =>
+      chart.sized
+        ? cloneElement(props.children as ReactElement<{ width: number; height: number }>, {
+            width: 600,
+            height: 240,
+          })
+        : createElement(actual.ChartContainer, props),
+  };
+});
 
 // Resolve real i18n keys so the status pill renders its human string
 // ("live"), matching the translate-stub convention used in detail.test.tsx.
@@ -136,5 +155,76 @@ describe("RolloutTooltip", () => {
     );
     expect(screen.getByText("0%")).toBeInTheDocument();
     expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+});
+
+describe("RolloutCurve placeholders and boundaries", () => {
+  afterEach(() => {
+    chart.sized = false;
+  });
+
+  const curve = (startDate: string, endDate: string) =>
+    render(
+      <RolloutCurve
+        initialVariation="off"
+        endVariation="on"
+        initialPct={10}
+        endPct={90}
+        startDate={startDate}
+        endDate={endDate}
+        variationNames={["on", "off"]}
+      />,
+    );
+
+  const placeholderTests: { name: string; start: string; end: string; want: string }[] = [
+    { name: "missing start date", start: "", end: localDatetime(Date.now()), want: "flag.wizard.rolloutCurveEmpty" },
+    { name: "missing end date", start: localDatetime(Date.now()), end: "", want: "flag.wizard.rolloutCurveEmpty" },
+    { name: "end before start", start: localDatetime(Date.now() + DAY), end: localDatetime(Date.now()), want: "flag.wizard.rolloutCurveInvalid" },
+    { name: "zero-length window", start: localDatetime(Date.now()), end: localDatetime(Date.now()), want: "flag.wizard.rolloutCurveInvalid" },
+  ];
+
+  for (const tt of placeholderTests) {
+    it(`shows a placeholder for ${tt.name}`, async () => {
+      const en = (await import("@/i18n/locales/en.json")).default as {
+        flag: { wizard: Record<string, string> };
+      };
+      curve(tt.start, tt.end);
+      const key = tt.want.split(".").pop()!;
+      expect(screen.getByText(en.flag.wizard[key])).toBeInTheDocument();
+      expect(screen.queryByText("Serving now")).toBeNull();
+    });
+  }
+
+  const boundaryTests: { name: string; start: number; end: number; wantPct: string; wantStatus: string }[] = [
+    { name: "before the window serves the initial share", start: Date.now() + DAY, end: Date.now() + 2 * DAY, wantPct: "10", wantStatus: "scheduled" },
+    { name: "after the window serves the end share", start: Date.now() - 2 * DAY, end: Date.now() - DAY, wantPct: "90", wantStatus: "completed" },
+  ];
+
+  for (const tt of boundaryTests) {
+    it(tt.name, () => {
+      curve(localDatetime(tt.start), localDatetime(tt.end));
+      expect(screen.getByText(tt.wantPct)).toBeInTheDocument();
+      expect(screen.getByText(tt.wantStatus)).toBeInTheDocument();
+    });
+  }
+
+  it("shows the tooltip popin when hovering the plotted chart", () => {
+    chart.sized = true;
+    const { container } = curve(
+      localDatetime(Date.now() - DAY),
+      localDatetime(Date.now() + DAY),
+    );
+    const wrapper = container.querySelector(".recharts-wrapper");
+    expect(wrapper).not.toBeNull();
+    const tooltip = container.querySelector<HTMLElement>(".recharts-tooltip-wrapper")!;
+    expect(tooltip.textContent).toBe("");
+    fireEvent.mouseMove(wrapper!, { clientX: 300, clientY: 100 });
+    // Hovering mid-window: both rows render and their shares sum to 100.
+    const rows = within(tooltip);
+    expect(rows.getByText("serving on")).toBeInTheDocument();
+    expect(rows.getByText("serving off")).toBeInTheDocument();
+    const pcts = rows.getAllByText(/^\d+%$/).map((el) => parseInt(el.textContent!, 10));
+    expect(pcts).toHaveLength(2);
+    expect(pcts[0] + pcts[1]).toBe(100);
   });
 });

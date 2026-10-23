@@ -139,3 +139,62 @@ describe("apiFetch headers", () => {
     expect(ct).toBe("application/json");
   });
 });
+
+describe("dataProvider getOne/deleteOne", () => {
+  const tests: {
+    name: string;
+    call: () => Promise<{ data: unknown }>;
+    method: "get" | "delete";
+    path: string;
+    reply: Record<string, unknown>;
+    want: unknown;
+  }[] = [
+    {
+      name: "getOne hits resource/id and unwraps data",
+      call: () => dataProvider.getOne({ resource: "teams", id: "t1" }),
+      method: "get",
+      path: "/teams/t1",
+      reply: { data: sampleTeam },
+      want: sampleTeam,
+    },
+    {
+      name: "getOne honors meta.path",
+      call: () =>
+        dataProvider.getOne({
+          resource: "flags",
+          id: "f1",
+          meta: { path: "/flagsets/fs1/flags" },
+        }),
+      method: "get",
+      path: "/flagsets/fs1/flags/f1",
+      reply: { data: { id: "f1" } },
+      want: { id: "f1" },
+    },
+    {
+      name: "deleteOne unwraps data",
+      call: () => dataProvider.deleteOne({ resource: "teams", id: "t1" }),
+      method: "delete",
+      path: "/teams/t1",
+      reply: { data: { id: "t1" } },
+      want: { id: "t1" },
+    },
+    {
+      name: "deleteOne returns null when the body has no data",
+      call: () => dataProvider.deleteOne({ resource: "teams", id: "t2" }),
+      method: "delete",
+      path: "/teams/t2",
+      reply: {},
+      want: null,
+    },
+  ];
+
+  for (const tt of tests) {
+    it(tt.name, async () => {
+      server.use(
+        http[tt.method](`${API_URL}${tt.path}`, () => HttpResponse.json(tt.reply))
+      );
+      const res = await tt.call();
+      expect(res.data).toEqual(tt.want);
+    });
+  }
+});
