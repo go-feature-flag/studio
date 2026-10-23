@@ -12,12 +12,18 @@ vi.mock("@refinedev/core", () => ({
 // test failure even when the component catches it.
 let onFinish: (values: unknown) => Promise<unknown>;
 let sent: unknown[];
+let formLoading = false;
+type Notify = (err?: unknown) => { message: string; type: string };
+let refineCoreProps: { successNotification: Notify; errorNotification: Notify };
 // Real react-hook-form underneath, with Refine's submit stubbed out.
 vi.mock("@refinedev/react-hook-form", () => ({
-  useForm: (opts: Parameters<typeof useRHForm>[0]) => ({
-    ...useRHForm(opts),
-    refineCore: { onFinish: (v: unknown) => onFinish(v), formLoading: false },
-  }),
+  useForm: (opts: Parameters<typeof useRHForm>[0] & { refineCoreProps: typeof refineCoreProps }) => {
+    refineCoreProps = opts.refineCoreProps;
+    return {
+      ...useRHForm(opts),
+      refineCore: { onFinish: (v: unknown) => onFinish(v), formLoading },
+    };
+  },
 }));
 
 vi.mock("@/components/refine-ui/views/create-view", () => ({
@@ -39,6 +45,7 @@ describe("CompanyCreatePage", () => {
   beforeEach(() => {
     sent = [];
     onFinish = async (v) => sent.push(v);
+    formLoading = false;
   });
 
   const tests = [
@@ -69,4 +76,30 @@ describe("CompanyCreatePage", () => {
     await fill("jane@acme.com");
     expect(await screen.findByText("company admin is required")).toBeInTheDocument();
   });
+
+  it("disables the submit button while saving", () => {
+    formLoading = true;
+    render(<CompanyCreatePage />);
+    expect(screen.getByRole("button", { name: "companies.create.submitting" })).toBeDisabled();
+  });
+
+  const notifications = [
+    { name: "success", notify: () => refineCoreProps.successNotification(), want: { message: "companies.create.success", type: "success" } },
+    {
+      name: "server error keeps the server's message",
+      notify: () => refineCoreProps.errorNotification(new HttpError("name taken", 409)),
+      want: { message: "name taken", type: "error" },
+    },
+    {
+      name: "error without a message falls back to the generic one",
+      notify: () => refineCoreProps.errorNotification(undefined),
+      want: { message: "companies.create.error", type: "error" },
+    },
+  ];
+  for (const tt of notifications) {
+    it(`notification: ${tt.name}`, () => {
+      render(<CompanyCreatePage />);
+      expect(tt.notify()).toEqual(tt.want);
+    });
+  }
 });
