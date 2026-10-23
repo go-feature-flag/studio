@@ -105,14 +105,9 @@ export function relativeTime(targetTs: number, nowTs: number): string {
     ["day", 86_400_000],
     ["hour", 3_600_000],
     ["minute", 60_000],
-    ["second", 1000],
   ];
-  for (const [unit, ms] of units) {
-    if (abs >= ms || unit === "second") {
-      return rtf.format(Math.round(diff / ms), unit);
-    }
-  }
-  return rtf.format(0, "second");
+  const [unit, ms] = units.find(([, ms]) => abs >= ms) ?? ["second", 1000];
+  return rtf.format(Math.round(diff / ms), unit);
 }
 
 // ServingNowCard recaps the current rollout state beside the chart: status,
