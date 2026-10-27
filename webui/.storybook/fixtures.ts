@@ -4,9 +4,12 @@ import type {
   CompanyMember,
   Flag,
   Flagset,
+  FlagInstance,
+  FlagOwner,
   FlagsetAPIKey,
   FlagVersion,
   MeResponse,
+  PaginatedResponse,
   Team,
   TeamMember,
   User,
@@ -61,6 +64,16 @@ export const IDENTITIES = {
     user: user({}),
     company: { companyId: "acme", companyDisplayName: "Acme Corp", role: "member" },
     membership: [{ teamId: "t-core", teamName: "Core platform", role: "editor" }],
+  },
+  viewer: {
+    user: user({ id: "u-linus", email: "linus@acme.dev", name: "Linus Torvalds" }),
+    company: { companyId: "acme", companyDisplayName: "Acme Corp", role: "member" },
+    membership: [{ teamId: "t-core", teamName: "Core platform", role: "viewer" }],
+  },
+  teamAdmin: {
+    user: user({}),
+    company: { companyId: "acme", companyDisplayName: "Acme Corp", role: "member" },
+    membership: [{ teamId: "t-core", teamName: "Core platform", role: "admin" }],
   },
   companyAdmin: {
     user: user({ id: "u-grace", email: "grace@acme.dev", name: "Grace Hopper" }),
@@ -141,6 +154,9 @@ export const FLAG: Flag = {
   ...stamp,
 };
 
+// Hours before now, so the audit log groups events under Today / Yesterday.
+const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
+
 // Newest first, as GET /audit returns them.
 const audit = (
   id: number,
@@ -157,7 +173,7 @@ const audit = (
 });
 
 export const AUDIT_ENTRIES: AuditEntry[] = [
-  audit(108, "2026-10-27T14:32:00Z", {
+  audit(108, ago(1), {
     action: "update",
     targetType: "flag",
     targetId: "f-checkout",
@@ -166,7 +182,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     before: { defaultRule: { variation: "disabled" }, trackEvents: false },
     after: { defaultRule: { variation: "enabled" }, trackEvents: true },
   }),
-  audit(107, "2026-10-27T13:05:00Z", {
+  audit(107, ago(2), {
     action: "update",
     targetType: "flag",
     targetId: "f-search",
@@ -174,7 +190,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     flagId: "f-search",
     after: { disabled: true },
   }),
-  audit(106, "2026-10-27T11:48:00Z", {
+  audit(106, ago(4), {
     actorUserId: "u-grace",
     actorEmail: "grace@acme.dev",
     action: "create",
@@ -183,7 +199,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     flagsetId: "fs-web",
     after: { label: "ci-relay-proxy", flagsetId: "fs-web" },
   }),
-  audit(105, "2026-10-27T09:15:00Z", {
+  audit(105, ago(6), {
     action: "create",
     targetType: "flag",
     targetId: "f-onboarding",
@@ -191,7 +207,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     flagId: "f-onboarding",
     after: { variations: { on: true, off: false }, defaultRule: { variation: "off" } },
   }),
-  audit(104, "2026-10-26T17:40:00Z", {
+  audit(104, ago(26), {
     actorUserId: "u-grace",
     actorEmail: "grace@acme.dev",
     action: "create",
@@ -199,7 +215,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     targetId: "u-linus",
     after: { userId: "u-linus", role: "editor" },
   }),
-  audit(103, "2026-10-26T15:20:00Z", {
+  audit(103, ago(28), {
     action: "update",
     targetType: "flagset",
     targetId: "fs-web",
@@ -207,7 +223,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     before: { description: "" },
     after: { description: "Flags served to the public web shop" },
   }),
-  audit(102, "2026-10-26T10:02:00Z", {
+  audit(102, ago(33), {
     action: "rollback",
     targetType: "flag",
     targetId: "f-pricing",
@@ -217,7 +233,7 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     after: { defaultRule: { variation: "v2" } },
     metadata: { restoredVersion: 2 },
   }),
-  audit(101, "2026-10-26T08:00:00Z", {
+  audit(101, ago(35), {
     actorUserId: null,
     actorEmail: null,
     action: "delete",
@@ -301,3 +317,85 @@ export const TEAM_MEMBERS: TeamMember[] = [
   { id: "u-ada", teamId: "t-core", userId: "u-ada", email: "ada@acme.dev", name: "Ada Lovelace", role: "editor", createdAt: stamp.createdAt },
   { id: "u-linus", teamId: "t-core", userId: "u-linus", email: "linus@acme.dev", name: "Linus Torvalds", role: "viewer", createdAt: stamp.createdAt },
 ];
+
+export const paginated = <T,>(data: T[]): PaginatedResponse<T> => ({
+  data,
+  total: data.length,
+  page: 1,
+  pageSize: 50,
+  totalPages: 1,
+});
+
+// Rows of GET /teams/t-core/flags, as the flags list shows them.
+const flagRow = (over: Partial<FlagInstance> & Pick<FlagInstance, "id" | "name">): FlagInstance => ({
+  flagsetId: "fs-web",
+  flagsetName: "web-storefront",
+  type: "boolean",
+  disabled: false,
+  owner: "Ada Lovelace",
+  ownerId: "u-ada",
+  currentVersion: 1,
+  updatedAt: ago(3),
+  variations: ["enabled", "disabled"],
+  distribution: { disabled: 100 },
+  targetingRuleCount: 0,
+  ...over,
+});
+
+export const FLAG_INSTANCES: FlagInstance[] = [
+  flagRow({
+    id: FLAG.id,
+    name: FLAG.name,
+    currentVersion: 4,
+    updatedAt: ago(1),
+    targetingRuleCount: 2,
+    tags: ["checkout", "q4-launch"],
+  }),
+  flagRow({
+    id: "f-search",
+    name: "search-v2",
+    disabled: true,
+    updatedAt: ago(2),
+    distribution: { enabled: 100 },
+    tags: ["search"],
+  }),
+  flagRow({
+    id: "f-onboarding",
+    name: "new-onboarding",
+    flagsetId: "fs-mobile",
+    flagsetName: "mobile-app",
+    owner: "Grace Hopper",
+    ownerId: "u-grace",
+    variations: ["on", "off"],
+    distribution: undefined,
+    progressiveRollout: { initialVariation: "off", endVariation: "on", from: 0, to: 100 },
+    tags: ["mobile"],
+  }),
+  flagRow({
+    id: "f-pricing",
+    name: "pricing-page-v3",
+    type: "string",
+    updatedAt: ago(33),
+    variations: ["v1", "v2", "v3"],
+    distribution: { v1: 20, v2: 30, v3: 50 },
+    targetingRuleCount: 1,
+    tags: ["experiment"],
+  }),
+  flagRow({
+    id: "f-max-items",
+    name: "cart-max-items",
+    type: "int",
+    owner: null,
+    ownerId: undefined,
+    updatedAt: ago(200),
+    variations: ["low", "high"],
+    distribution: { high: 100 },
+  }),
+];
+
+export const FLAG_OWNERS: FlagOwner[] = [
+  { id: "u-ada", name: "Ada Lovelace" },
+  { id: "u-grace", name: "Grace Hopper" },
+];
+
+export const TAGS = ["checkout", "experiment", "mobile", "q4-launch", "search"];
