@@ -1,15 +1,24 @@
 import type {
   AuditEntry,
   Company,
+  CompanyMember,
   Flag,
   Flagset,
+  FlagsetAPIKey,
+  FlagVersion,
   MeResponse,
   Team,
+  TeamMember,
   User,
 } from "../src/types/api";
 
-// Shared fake data for stories. The preview's data provider serves COMPANIES
-// and TEAMS; stories pick an identity via `parameters: { identity }`.
+// Shared fake data for stories. The preview's data provider serves these by URL
+// suffix; stories pick an identity via `parameters: { identity }` and can force
+// a request's state via `parameters: { data: { "<suffix>": value | LOADING | FAILED } }`.
+
+// Sentinels for `parameters.data`: a request that never settles, or one that fails.
+export const LOADING = Symbol("loading");
+export const FAILED = Symbol("failed");
 
 const user = (over: Partial<User>): User => ({
   id: "u-ada",
@@ -24,14 +33,19 @@ const user = (over: Partial<User>): User => ({
 const stamp = { createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" };
 
 export const COMPANIES: Company[] = [
-  { id: "acme", displayName: "Acme Corp", description: "", ...stamp },
+  {
+    id: "acme",
+    displayName: "Acme Corp",
+    description: "Makers of fine anvils and rocket skates",
+    ...stamp,
+  },
   { id: "globex", displayName: "Globex", description: "", ...stamp },
 ];
 
 export const TEAMS: Team[] = [
-  { id: "t-core", companyId: "acme", name: "Core platform", description: "", ...stamp },
-  { id: "t-growth", companyId: "acme", name: "Growth", description: "", ...stamp },
-  { id: "t-mobile", companyId: "acme", name: "Mobile", description: "", ...stamp },
+  { id: "t-core", companyId: "acme", name: "Core platform", description: "Checkout, search and the storefront backbone", ...stamp },
+  { id: "t-growth", companyId: "acme", name: "Growth", description: "Onboarding and pricing experiments", ...stamp },
+  { id: "t-mobile", companyId: "acme", name: "Mobile", description: "iOS and Android apps", ...stamp },
 ];
 
 export const IDENTITIES = {
@@ -213,4 +227,77 @@ export const AUDIT_ENTRIES: AuditEntry[] = [
     flagId: "f-legacy",
     before: { variations: { on: true, off: false }, disable: true },
   }),
+];
+
+// checkout-redesign's history, oldest first; FLAG is version 4.
+const version = (
+  versionNumber: number,
+  createdAt: string,
+  comment: string,
+  payload: Flag["payload"],
+): FlagVersion => ({
+  id: `fv-${versionNumber}`,
+  flagId: FLAG.id,
+  versionNumber,
+  payload: payload!,
+  comment,
+  createdBy: "u-ada",
+  createdByName: "Ada Lovelace",
+  createdAt,
+});
+
+export const FLAG_VERSIONS: FlagVersion[] = [
+  version(1, "2026-10-20T09:00:00Z", "", {
+    variations: { enabled: true, disabled: false },
+    defaultRule: { variation: "disabled" },
+  }),
+  version(2, "2026-10-22T10:30:00Z", "feat(flags): beta testers get the new checkout", {
+    ...FLAG.payload,
+    targeting: FLAG.payload!.targeting!.slice(0, 1),
+    metadata: undefined,
+    trackEvents: false,
+  }),
+  version(3, "2026-10-24T16:10:00Z", "feat(flags): open checkout to 30% of FR", {
+    ...FLAG.payload,
+    trackEvents: false,
+  }),
+  version(4, "2026-10-27T14:32:00Z", "chore(flags): track evaluation events", FLAG.payload),
+];
+
+export const API_KEYS: FlagsetAPIKey[] = [
+  {
+    id: "k-prod",
+    flagsetId: "fs-web",
+    label: "production relay proxy",
+    apiKey: "goff_live_3f9a1c7e2b8d4a6f9e0c1b2a3d4e5f60",
+    createdBy: "u-grace",
+    createdByName: "Grace Hopper",
+    createdAt: "2026-09-02T08:15:00Z",
+  },
+  {
+    id: "k-ci",
+    flagsetId: "fs-web",
+    label: "ci-relay-proxy",
+    apiKey: "goff_live_8c2e4b6a0d1f3e5c7b9a2d4f6e8c0a1b",
+    createdBy: "u-grace",
+    createdByName: "Grace Hopper",
+    createdAt: "2026-10-27T11:48:00Z",
+  },
+];
+
+const companyMember = (
+  u: Pick<CompanyMember, "userId" | "email" | "name" | "role">,
+): CompanyMember => ({ id: u.userId, companyId: "acme", ...u });
+
+export const COMPANY_MEMBERS: CompanyMember[] = [
+  companyMember({ userId: "u-grace", email: "grace@acme.dev", name: "Grace Hopper", role: "admin" }),
+  companyMember({ userId: "u-ada", email: "ada@acme.dev", name: "Ada Lovelace", role: "member" }),
+  companyMember({ userId: "u-linus", email: "linus@acme.dev", name: "Linus Torvalds", role: "member" }),
+  companyMember({ userId: "u-margaret", email: "margaret@acme.dev", name: "Margaret Hamilton", role: "member" }),
+];
+
+// Members of TEAMS[0] (Core platform).
+export const TEAM_MEMBERS: TeamMember[] = [
+  { id: "u-ada", teamId: "t-core", userId: "u-ada", email: "ada@acme.dev", name: "Ada Lovelace", role: "editor", createdAt: stamp.createdAt },
+  { id: "u-linus", teamId: "t-core", userId: "u-linus", email: "linus@acme.dev", name: "Linus Torvalds", role: "viewer", createdAt: stamp.createdAt },
 ];

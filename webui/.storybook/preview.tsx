@@ -21,43 +21,95 @@ import {
 } from "../src/providers/auth";
 import { i18nProvider } from "../src/providers/i18n";
 import type { MeResponse } from "../src/types/api";
-import { COMPANIES, TEAMS } from "./fixtures";
+import {
+  API_KEYS,
+  COMPANIES,
+  COMPANY_MEMBERS,
+  FAILED,
+  FLAG_VERSIONS,
+  FLAGSETS,
+  LOADING,
+  TEAM_MEMBERS,
+  TEAMS,
+} from "./fixtures";
 import "../src/App.css"; // Tailwind v4 entry + OKLch design tokens + .dark variant
 
 type ThemeName = "light" | "dark";
 
 const notUsed = () => Promise.reject(new Error("not used in stories"));
 
+type Routes = Record<string, unknown>;
+
+/**
+ * GET responses served to stories, matched on URL suffix (first match wins).
+ * A story overrides any of them, or forces LOADING / FAILED, through
+ * `parameters: { data: { "<suffix>": … } }`.
+ */
+const ROUTES: Routes = {
+  "/companies/acme": COMPANIES[0],
+  "/companies/acme/members": COMPANY_MEMBERS,
+  "/teams": TEAMS,
+  "/teams/t-core": TEAMS[0],
+  "/teams/t-core/members": TEAM_MEMBERS,
+  "/teams/t-core/addable-members": COMPANY_MEMBERS,
+  "/flagsets": FLAGSETS,
+  "/flagsets/fs-web/api-keys": API_KEYS,
+  "/flags/f-checkout/versions": {
+    data: FLAG_VERSIONS,
+    total: FLAG_VERSIONS.length,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  },
+};
+
+const EVALUATION = {
+  value: true,
+  variationType: "enabled",
+  reason: "TARGETING_MATCH",
+  failed: false,
+  trackEvents: true,
+  cacheable: true,
+};
+
+function respond(url: string, overrides: Routes) {
+  for (const routes of [overrides, ROUTES]) {
+    const suffix = Object.keys(routes).find((s) => url.endsWith(s));
+    if (suffix === undefined) continue;
+    const data = routes[suffix];
+    if (data === LOADING) return new Promise<never>(() => {});
+    if (data === FAILED) return Promise.reject(new Error(`story: ${url} failed`));
+    return Promise.resolve({ data } as never);
+  }
+  return notUsed();
+}
+
 /**
  * Stories never talk to the API: the data provider serves fixtures for the
- * few calls storied components make (EvaluatePanel's evaluate, the company
- * teams and companies lists) and rejects everything else loudly.
+ * reads storied components make (plus EvaluatePanel's evaluate) and rejects
+ * everything else, writes included, loudly.
  */
-const storyDataProvider: DataProvider = {
+const storyDataProvider = (overrides: Routes = {}): DataProvider => ({
   getApiUrl: () => "",
   getList: async ({ resource }) =>
     resource === "companies"
       ? ({ data: COMPANIES, total: COMPANIES.length } as never)
       : notUsed(),
-  getOne: notUsed,
+  getOne: ({ resource, id }) => respond(`/${resource}/${id}`, overrides),
   create: notUsed,
   update: notUsed,
   deleteOne: notUsed,
-  custom: async ({ url }) => {
-    if (url.endsWith("/evaluate"))
-      return {
-        data: {
-          value: true,
-          variationType: "enabled",
-          reason: "TARGETING_MATCH",
-          failed: false,
-          trackEvents: true,
-          cacheable: true,
-        },
-      } as never;
-    if (url.endsWith("/teams")) return { data: TEAMS } as never;
-    return notUsed();
+  custom: ({ url, method }) => {
+    if (url.endsWith("/evaluate")) return Promise.resolve({ data: EVALUATION } as never);
+    return method === "get" ? respond(url, overrides) : notUsed();
   },
+});
+
+// Fail fast: without this React Query retries a FAILED request 3 times (~7s)
+// before the story reaches its error state. Module-level so Refine's memoized
+// QueryClient isn't rebuilt on every render.
+const reactQuery = {
+  clientConfig: { defaultOptions: { queries: { retry: false } } },
 };
 
 // Identity comes from the auth cache, which withAppProviders seeds per story.
@@ -109,9 +161,11 @@ const withAppProviders: Decorator = (Story, context) => {
         <MemoryRouter key={context.id}>
           <Refine
             authProvider={storyAuthProvider}
-            dataProvider={storyDataProvider}
+            dataProvider={storyDataProvider(
+              context.parameters.data as Routes | undefined,
+            )}
             i18nProvider={i18nProvider}
-            options={{ disableTelemetry: true }}
+            options={{ disableTelemetry: true, reactQuery }}
           >
             <ActiveCompanyProvider>
               <ActiveTeamProvider>
