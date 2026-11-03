@@ -598,7 +598,7 @@
       "title": "Create your company",
       "subtitle": "You will be the admin of this company.",
       "nameLabel": "Company name",
-      "namePlaceholder": "Acme Inc",
+      "namePlaceholder": "GO Feature Flag",
       "descLabel": "Description",
       "descPlaceholder": "What does this company do?",
       "submit": "Create company",
@@ -646,7 +646,7 @@
     },
     "create": {
       "title": "Create company",
-      "displayNamePlaceholder": "Acme Inc",
+      "displayNamePlaceholder": "GO Feature Flag",
       "descPlaceholder": "What does this company do?",
       "submit": "Create company",
       "submitting": "Creating...",
@@ -654,7 +654,7 @@
       "error": "Failed to create company",
       "displayNameRequired": "Display name is required",
       "adminEmail": "Company admin",
-      "adminEmailPlaceholder": "jane@acme.com",
+      "adminEmailPlaceholder": "bob.razowski@gofeatureflag.org",
       "adminEmailHint": "Must be a user who has already signed in and isn't in another company.",
       "adminEmailRequired": "Valid email required"
     },
