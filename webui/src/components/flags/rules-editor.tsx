@@ -8,6 +8,7 @@ import { QueryBuilderShadcnUi } from "@/components/react-querybuilder-shadcn-ui"
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { OutcomeEditor } from "./outcome-editor";
@@ -101,10 +102,19 @@ export function RulesEditor({
                   value={r.name}
                   onChange={(e) => patchRule(r.id, { name: e.target.value })}
                 />
+                <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                  <Switch
+                    aria-label={t("flag.wizard.ruleEnabled", { name: r.name })}
+                    checked={!r.disable}
+                    onCheckedChange={(on) => patchRule(r.id, { disable: on ? undefined : true })}
+                    disabled={disabled}
+                  />
+                  {t(r.disable ? "flag.wizard.ruleOff" : "flag.wizard.ruleOn")}
+                </label>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="ml-auto h-8 w-8"
+                  className="h-8 w-8"
                   onClick={() => removeRule(r.id)}
                   aria-label={t("common.remove")}
                 >
