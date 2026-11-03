@@ -1,21 +1,17 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { useCustom, useTranslate } from "@refinedev/core";
 import { Link, Navigate, useParams } from "react-router";
 import {
   ArrowUpRightIcon,
-  Code2Icon,
   FlagIcon,
-  FlaskConicalIcon,
   KeyRoundIcon,
-  ListIcon,
   SettingsIcon,
   ZapIcon,
 } from "lucide-react";
 import { ListView } from "@/components/refine-ui/views/list-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CodeSampleTab } from "./code-sample-tab";
 import { GeneralTab } from "./settings-general-tab";
 import { ApiKeysTab } from "./settings-api-keys-tab";
 import { ContextTab } from "./settings-context-tab";
@@ -28,17 +24,12 @@ import type { Flagset } from "@/types/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBreadcrumb } from "@/components/ui/page-header";
 
-type TabKey =
-  | "general"
-  | "keys"
-  | "codeSample"
-  | "context"
-  | "settings";
+type TabKey = "settings" | "keys" | "context";
 
 export function FlagsetSettingsPage() {
   const t = useTranslate();
   const { id } = useParams<{ id: string }>();
-  const [tab, setTab] = useState<TabKey>("general");
+  const [tab, setTab] = useState<TabKey>("settings");
 
   const { query } = useCustom<Flagset>({
     url: `${API_URL}/flagsets/${id}`,
@@ -56,15 +47,13 @@ export function FlagsetSettingsPage() {
   // Listing API keys needs editor+; viewers don't get the Keys tab.
   const canReadKeys =
     !!teamId && (canEditTeam(teamId) || effectiveTeamRole(teamId) === "editor");
-  const shownTab = tab === "keys" && !canReadKeys ? "general" : tab;
+  const shownTab = tab === "keys" && !canReadKeys ? "settings" : tab;
 
   const allTabs: { key: TabKey; label: string; icon: ReactNode }[] =
     [
-      { key: "general", label: t("flagset.settings.general"), icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "settings", label: t("flagset.settings.settings"), icon: <SettingsIcon className="h-4 w-4" /> },
       { key: "keys", label: t("flagset.settings.apiKeys"), icon: <KeyRoundIcon className="h-4 w-4" /> },
-      { key: "codeSample", label: t("flagset.settings.codeSample"), icon: <Code2Icon className="h-4 w-4" /> },
       { key: "context", label: t("flagset.settings.context"), icon: <ZapIcon className="h-4 w-4" /> },
-      { key: "settings", label: t("flagset.settings.settings"), icon: <FlaskConicalIcon className="h-4 w-4" /> },
     ];
   const tabs = allTabs.filter((tb) => tb.key !== "keys" || canReadKeys);
 
@@ -85,39 +74,35 @@ export function FlagsetSettingsPage() {
           <h1 className="font-mono text-2xl font-bold tracking-tight">
             {flagset?.name ?? "…"}
           </h1>
-          <Badge variant="secondary">{t("flagset.settings.active")}</Badge>
+          {flagset && (
+            <Badge
+              asChild
+              className="bg-primary/10 text-primary [a&]:hover:bg-primary/20"
+            >
+              <Link to={`/flags?flagset=${id}`}>
+                {t("flagset.settings.viewFlags", { count: flagset.flagCount })}
+                <ArrowUpRightIcon />
+              </Link>
+            </Badge>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[184px_1fr]">
           <nav className="flex flex-col gap-1 md:sticky md:top-4 md:self-start">
             {tabs.map((tb) => (
-              <Fragment key={tb.key}>
-                <Button
-                  variant="ghost"
-                  aria-current={shownTab === tb.key ? "true" : undefined}
-                  onClick={() => setTab(tb.key)}
-                  className={cn(
-                    "justify-start font-normal text-muted-foreground",
-                    shownTab === tb.key && "bg-muted font-medium text-foreground",
-                  )}
-                >
-                  {tb.icon}
-                  {tb.label}
-                </Button>
-                {tb.key === "general" && (
-                  <Button
-                    asChild
-                    variant="ghost"
-                    className="justify-start font-normal text-muted-foreground"
-                  >
-                    <Link to={`/flags?flagset=${id}`}>
-                      <ListIcon className="h-4 w-4" />
-                      {t("flagset.settings.viewFlags")}
-                      <ArrowUpRightIcon className="ml-auto h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
+              <Button
+                key={tb.key}
+                variant="ghost"
+                aria-current={shownTab === tb.key ? "true" : undefined}
+                onClick={() => setTab(tb.key)}
+                className={cn(
+                  "justify-start font-normal text-muted-foreground",
+                  shownTab === tb.key && "bg-muted font-medium text-foreground",
                 )}
-              </Fragment>
+              >
+                {tb.icon}
+                {tb.label}
+              </Button>
             ))}
           </nav>
 
@@ -126,16 +111,13 @@ export function FlagsetSettingsPage() {
               <EmptyState>
                 {t("common.loading")}
               </EmptyState>
-            ) : shownTab === "general" ? (
-              <GeneralTab flagset={flagset} canWrite={canManage} onSaved={() => query.refetch()} />
             ) : shownTab === "keys" ? (
               <ApiKeysTab flagsetId={id} canManage={canManage} />
-            ) : shownTab === "codeSample" ? (
-              <CodeSampleTab flagsetId={id} canReadKeys={canReadKeys} />
             ) : shownTab === "context" ? (
               <ContextTab flagset={flagset} canWrite={canManage} onSaved={() => query.refetch()} />
             ) : (
               <div className="flex flex-col gap-4">
+                <GeneralTab flagset={flagset} canWrite={canManage} onSaved={() => query.refetch()} />
                 <SettingsTab flagset={flagset} canWrite={canManage} onSaved={() => query.refetch()} />
                 {/* Danger zone (delete flagset) is admin-only. */}
                 {canManage && <DangerTab flagset={flagset} />}

@@ -26,12 +26,10 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const General: Story = {};
+// General, testing context, plus the admin-only danger zone.
+export const Settings: Story = {};
 export const ApiKeys: Story = { play: openTab("API keys") };
-export const CodeSample: Story = { play: openTab("Code sample") };
 export const Context: Story = { play: openTab("Context enrichment") };
-// Testing context, plus the admin-only danger zone.
-export const Settings: Story = { play: openTab("Settings") };
 
 // Editors read keys but can't manage them or the flagset.
 export const EditorApiKeys: Story = {

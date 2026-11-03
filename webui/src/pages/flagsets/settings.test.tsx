@@ -39,7 +39,6 @@ const { stub } = vi.hoisted(() => ({
 }));
 vi.mock("./settings-general-tab", () => ({ GeneralTab: stub("general") }));
 vi.mock("./settings-api-keys-tab", () => ({ ApiKeysTab: stub("keys") }));
-vi.mock("./code-sample-tab", () => ({ CodeSampleTab: stub("codeSample") }));
 vi.mock("./settings-context-tab", () => ({ ContextTab: stub("context") }));
 vi.mock("./settings-testing-context-tab", () => ({ SettingsTab: stub("settings") }));
 vi.mock("./settings-danger-tab", () => ({ DangerTab: stub("danger") }));
@@ -92,9 +91,9 @@ describe("FlagsetSettingsPage", () => {
   });
 
   const roles = [
-    { name: "admin lands on general and can write", canEdit: true, role: "admin", wantTab: "general", wantKeysTab: true, wantProps: { canWrite: true } },
-    { name: "editor lands on general, read-only", canEdit: false, role: "editor", wantTab: "general", wantKeysTab: true, wantProps: { canWrite: false } },
-    { name: "viewer lands on general and has no keys tab", canEdit: false, role: "viewer", wantTab: "general", wantKeysTab: false, wantProps: { canWrite: false } },
+    { name: "admin lands on settings and can write", canEdit: true, role: "admin", wantTab: "general", wantKeysTab: true, wantProps: { canWrite: true } },
+    { name: "editor lands on settings, read-only", canEdit: false, role: "editor", wantTab: "general", wantKeysTab: true, wantProps: { canWrite: false } },
+    { name: "viewer lands on settings and has no keys tab", canEdit: false, role: "viewer", wantTab: "general", wantKeysTab: false, wantProps: { canWrite: false } },
   ];
   for (const tt of roles) {
     it(tt.name, () => {
@@ -108,9 +107,7 @@ describe("FlagsetSettingsPage", () => {
   }
 
   const tabs = [
-    { label: "flagset.settings.general", testId: "general", want: { canWrite: true } },
     { label: "flagset.settings.apiKeys", testId: "keys", want: { canManage: true } },
-    { label: "flagset.settings.codeSample", testId: "codeSample", want: { canReadKeys: true } },
     { label: "flagset.settings.context", testId: "context", want: { canWrite: true } },
     { label: "flagset.settings.settings", testId: "settings", want: { canWrite: true } },
   ];
@@ -120,7 +117,8 @@ describe("FlagsetSettingsPage", () => {
       renderAt();
       await u.click(screen.getByRole("button", { name: tt.label }));
       expect(props(tt.testId)).toEqual(tt.want);
-      expect(screen.queryByTestId("general") === null).toBe(tt.testId !== "general");
+      // General (name/description) is part of the Settings tab.
+      expect(screen.queryByTestId("general") === null).toBe(tt.testId !== "settings");
       const saveBtn = screen.queryByRole("button", { name: `${tt.testId}-save` });
       if (saveBtn) {
         await u.click(saveBtn);

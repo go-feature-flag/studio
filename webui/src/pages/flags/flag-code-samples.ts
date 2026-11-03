@@ -1,7 +1,7 @@
 // Code samples shown in the flag "Code sample" tab.
 //
-// Each sample = the OpenFeature provider-init snippet reused from the flagset
-// "Code sample" tab (see ../flagsets/code-samples) + an evaluation block that
+// Each sample = the OpenFeature provider-init snippet from
+// ../flagsets/code-samples + an evaluation block that
 // reads THIS flag with the type-correct OpenFeature method and the flag's name.
 //
 // The evaluation method depends on the flag's value type:

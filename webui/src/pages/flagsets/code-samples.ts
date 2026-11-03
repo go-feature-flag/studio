@@ -1,4 +1,5 @@
-// Code samples shown in the flagset "Code sample" tab.
+// OpenFeature provider-init snippets, extended per flag by
+// ../flags/flag-code-samples.
 //
 // Each sample initializes the OpenFeature GO Feature Flag provider. The
 // relay-proxy endpoint is hardcoded to the public GO Feature Flag URL — users
