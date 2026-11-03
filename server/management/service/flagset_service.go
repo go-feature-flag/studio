@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
@@ -24,6 +25,8 @@ func NewFlagsetService(repo *repository.FlagsetRepo, audit *repository.AuditRepo
 type flagsetSettings struct {
 	name                                    *string
 	enrichment, defaultTestingEvaluationCtx json.RawMessage
+	// relay holds the update-only relay proxy options; nil on create.
+	relay *model.UpdateFlagsetRequest
 }
 
 // validate returns every problem at once. The evaluation-context fields must be
@@ -32,6 +35,13 @@ func (f flagsetSettings) validate() error {
 	var errs model.ValidationErrors
 	if f.name != nil {
 		errs = append(errs, validateName(f.name, "name")...)
+	}
+	if r := f.relay; r != nil {
+		if p := r.PollingInterval; p != nil && (*p < model.MinPollingInterval || *p > model.MaxPollingInterval) {
+			errs = append(errs, model.ValidationError{Field: "pollingInterval", Message: fmt.Sprintf(
+				"pollingInterval must be between %d and %d milliseconds", model.MinPollingInterval, model.MaxPollingInterval)})
+		}
+		errs = append(errs, validateConfigText(r.Environment, "environment", maxNameLength)...)
 	}
 	for _, c := range []struct {
 		field string
@@ -106,6 +116,7 @@ func (s *FlagsetService) Update(
 	err := flagsetSettings{
 		name:       req.Name,
 		enrichment: req.EvaluationContextEnrichment, defaultTestingEvaluationCtx: req.DefaultTestingEvaluationContext,
+		relay: req,
 	}.validate()
 	if err != nil {
 		return nil, err
@@ -114,9 +125,7 @@ func (s *FlagsetService) Update(
 	if err != nil {
 		return nil, err
 	}
-	if !changes(req.Name, before.Name) && !changes(req.Description, before.Description) &&
-		!jsonChanges(req.EvaluationContextEnrichment, before.EvaluationContextEnrichment) &&
-		!jsonChanges(req.DefaultTestingEvaluationContext, before.DefaultTestingEvaluationContext) {
+	if !flagsetChanges(req, before) {
 		return before, nil
 	}
 	fs, err := s.repo.Update(ctx, id, req)
@@ -129,6 +138,18 @@ func (s *FlagsetService) Update(
 		Before: before, After: fs,
 	})
 	return fs, nil
+}
+
+// flagsetChanges reports whether the update changes any field of before.
+func flagsetChanges(req *model.UpdateFlagsetRequest, before *model.Flagset) bool {
+	return changes(req.Name, before.Name) || changes(req.Description, before.Description) ||
+		jsonChanges(req.EvaluationContextEnrichment, before.EvaluationContextEnrichment) ||
+		jsonChanges(req.DefaultTestingEvaluationContext, before.DefaultTestingEvaluationContext) ||
+		changes(req.PollingInterval, before.PollingInterval) ||
+		changes(req.StartWithRetrieverError, before.StartWithRetrieverError) ||
+		changes(req.EnablePollingJitter, before.EnablePollingJitter) ||
+		changes(req.DisableNotifierOnInit, before.DisableNotifierOnInit) ||
+		changes(req.Environment, before.Environment)
 }
 
 func (s *FlagsetService) Delete(ctx context.Context, actorID, id string) error {

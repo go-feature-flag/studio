@@ -74,6 +74,30 @@ func TestFlagsetServiceCRUD(t *testing.T) {
 		assert.Equal(t, 1, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetFlagset))
 	})
 
+	t.Run("relay proxy settings default to the relay proxy's, then update", func(t *testing.T) {
+		assert.Equal(t, model.RelayProxySettings{PollingInterval: 60000}, created.RelayProxySettings)
+		req := &model.UpdateFlagsetRequest{
+			PollingInterval: new(5000), StartWithRetrieverError: new(true), EnablePollingJitter: new(true),
+			DisableNotifierOnInit: new(true), Environment: new(" production "),
+		}
+		fs, err := svc.Update(ctx, actor.ID, created.ID, req)
+		require.NoError(t, err)
+		assert.Equal(t, model.RelayProxySettings{
+			PollingInterval: 5000, StartWithRetrieverError: true, EnablePollingJitter: true, DisableNotifierOnInit: true,
+			Environment: "production",
+		}, fs.RelayProxySettings, "environment is trimmed")
+		assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetFlagset))
+		// Same values: no-op, no audit entry.
+		_, err = svc.Update(ctx, actor.ID, created.ID, req)
+		require.NoError(t, err)
+		assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetFlagset))
+		// Empty text unsets the option.
+		fs, err = svc.Update(ctx, actor.ID, created.ID, &model.UpdateFlagsetRequest{Environment: new("")})
+		require.NoError(t, err)
+		assert.Empty(t, fs.Environment)
+		assert.True(t, fs.EnablePollingJitter, "absent options are preserved")
+	})
+
 	t.Run("update missing -> not found", func(t *testing.T) {
 		_, err := svc.Update(ctx, actor.ID, "00000000-0000-0000-0000-000000000000",
 			&model.UpdateFlagsetRequest{Description: new("x")})
@@ -125,6 +149,17 @@ func TestFlagsetServiceValidation(t *testing.T) {
 		{"string evaluation context", model.UpdateFlagsetRequest{
 			DefaultTestingEvaluationContext: json.RawMessage(`"x"`),
 		}, []string{"defaultTestingEvaluationContext"}},
+		{"polling interval below 1s", model.UpdateFlagsetRequest{PollingInterval: new(999)}, []string{"pollingInterval"}},
+		{"negative polling interval", model.UpdateFlagsetRequest{PollingInterval: new(-1)}, []string{"pollingInterval"}},
+		{"polling interval over a day", model.UpdateFlagsetRequest{
+			PollingInterval: new(model.MaxPollingInterval + 1),
+		}, []string{"pollingInterval"}},
+		{"control character in environment", model.UpdateFlagsetRequest{Environment: new("prod\nx: y")}, []string{"environment"}},
+		{"invalid UTF-8 in environment", model.UpdateFlagsetRequest{Environment: new("prod\xff")}, []string{"environment"}},
+		{"environment too long", model.UpdateFlagsetRequest{Environment: new(strings.Repeat("e", 121))}, []string{"environment"}},
+		{"every problem at once", model.UpdateFlagsetRequest{
+			Name: new(""), PollingInterval: new(0), Environment: new("a\tb"),
+		}, []string{"name", "pollingInterval", "environment"}},
 	}
 	for _, tt := range updateTests {
 		t.Run("update: "+tt.name, func(t *testing.T) {
@@ -223,7 +258,7 @@ func TestFlagsetServiceRelayProxyConfig(t *testing.T) {
 		out, err := svc.RelayProxyConfig(ctx, team.CompanyID)
 		require.NoError(t, err)
 		cfg := db.Pool.Config().ConnConfig
-		assert.Contains(t, out, `- name: "`+fs.ID+`"`)
+		assert.Contains(t, out, `- name: "`+fs.ID+`"`+"\n    pollingInterval: 60000\n")
 		assert.Contains(t, out, `- "`+keys[0].APIKey+`"`)
 		assert.Contains(t, out, fmt.Sprintf("@%s:%d/%s", cfg.Host, cfg.Port, cfg.Database))
 	})

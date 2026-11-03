@@ -8,7 +8,7 @@ const meta = {
   title: "Pages/Flagsets/ContextTab",
   component: ContextTab,
   tags: ["autodocs"],
-  args: { flagset: FLAGSETS[0], canWrite: true, onSaved: fn() },
+  args: { flagset: FLAGSETS[0], editorKey: 0, canWrite: true, onChange: fn() },
 } satisfies Meta<typeof ContextTab>;
 
 export default meta;

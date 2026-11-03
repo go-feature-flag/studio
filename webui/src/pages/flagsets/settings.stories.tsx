@@ -28,6 +28,12 @@ type Story = StoryObj<typeof meta>;
 
 // General, testing context, plus the admin-only danger zone.
 export const Settings: Story = {};
+// Any edit raises the single save bar.
+export const UnsavedChanges: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.type(await within(canvasElement).findByLabelText("Name"), "-v2");
+  },
+};
 export const ApiKeys: Story = { play: openTab("API keys") };
 export const Context: Story = { play: openTab("Context enrichment") };
 

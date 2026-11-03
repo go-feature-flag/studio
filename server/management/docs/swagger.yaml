@@ -418,8 +418,15 @@ definitions:
         type: object
       description:
         type: string
+      disableNotifierOnInit:
+        type: boolean
+      enablePollingJitter:
+        type: boolean
       enabledFlagCount:
         type: integer
+      environment:
+        example: production
+        type: string
       evaluationContextEnrichment:
         description: |-
           EvaluationContextEnrichment is a free-form object merged into every
@@ -432,6 +439,14 @@ definitions:
         type: string
       name:
         type: string
+      pollingInterval:
+        description: |-
+          PollingInterval is how often, in milliseconds, the relay proxy reloads
+          the flagset's flags.
+        example: 60000
+        type: integer
+      startWithRetrieverError:
+        type: boolean
       teamId:
         type: string
       updatedAt:
@@ -634,10 +649,25 @@ definitions:
         type: object
       description:
         type: string
+      disableNotifierOnInit:
+        type: boolean
+      enablePollingJitter:
+        type: boolean
+      environment:
+        example: production
+        type: string
       evaluationContextEnrichment:
         type: object
       name:
         type: string
+      pollingInterval:
+        description: |-
+          PollingInterval is in milliseconds, between MinPollingInterval and
+          MaxPollingInterval.
+        example: 60000
+        type: integer
+      startWithRetrieverError:
+        type: boolean
     type: object
   model.UpdateMemberRequest:
     properties:

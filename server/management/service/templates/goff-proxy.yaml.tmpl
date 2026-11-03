@@ -16,7 +16,16 @@ flagSets:
   # skipped: no API key
 {{- else}}
   - name: {{quote .ID}}
-    pollingInterval: 60000
+    pollingInterval: {{.PollingInterval}}
+    startWithRetrieverError: {{.StartWithRetrieverError}}
+    enablePollingJitter: {{.EnablePollingJitter}}
+    disableNotifierOnInit: {{.DisableNotifierOnInit}}
+{{- with .Environment}}
+    environment: {{quote .}}
+{{- end}}
+{{- if enrichment .EvaluationContextEnrichment}}
+    evaluationContextEnrichment: {{enrichment .EvaluationContextEnrichment}}
+{{- end}}
     apiKeys:
 {{- range .APIKeys}}
       - {{quote .}}

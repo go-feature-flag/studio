@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"net"
 	"net/url"
 	"strconv"
@@ -21,9 +22,22 @@ var relayProxyTemplateText string
 // is commented out because the relay proxy rejects a flagset with no apiKeys,
 // and an empty flagSets list would make it fall back to top-level retrievers.
 var relayProxyTemplate = template.Must(template.New("goff-proxy.yaml").Funcs(template.FuncMap{
-	"quote":   strconv.Quote,
-	"comment": yamlComment,
+	"quote":      strconv.Quote,
+	"comment":    yamlComment,
+	"enrichment": yamlEnrichment,
 }).Parse(relayProxyTemplateText))
+
+// yamlEnrichment renders the enrichment object as a one-line JSON (hence YAML
+// flow) mapping, or "" when unset, null or empty so the key is left out.
+// Re-marshaling compacts the jsonb text so it stays on its line.
+func yamlEnrichment(raw json.RawMessage) string {
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil || len(m) == 0 {
+		return ""
+	}
+	b, _ := json.Marshal(m) // decoded from JSON, so it always re-encodes
+	return string(b)
+}
 
 // yamlComment keeps a free-form name on its comment line: YAML also breaks lines
 // on U+0085/U+2028/U+2029 and rejects control characters, so every

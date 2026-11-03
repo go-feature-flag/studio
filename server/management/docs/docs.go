@@ -3797,8 +3797,18 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "disableNotifierOnInit": {
+                    "type": "boolean"
+                },
+                "enablePollingJitter": {
+                    "type": "boolean"
+                },
                 "enabledFlagCount": {
                     "type": "integer"
+                },
+                "environment": {
+                    "type": "string",
+                    "example": "production"
                 },
                 "evaluationContextEnrichment": {
                     "description": "EvaluationContextEnrichment is a free-form object merged into every\nevaluation context for flags in this flagset (enrichment value wins on\nkey collision).",
@@ -3812,6 +3822,14 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "pollingInterval": {
+                    "description": "PollingInterval is how often, in milliseconds, the relay proxy reloads\nthe flagset's flags.",
+                    "type": "integer",
+                    "example": 60000
+                },
+                "startWithRetrieverError": {
+                    "type": "boolean"
                 },
                 "teamId": {
                     "type": "string"
@@ -4122,11 +4140,29 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "disableNotifierOnInit": {
+                    "type": "boolean"
+                },
+                "enablePollingJitter": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "type": "string",
+                    "example": "production"
+                },
                 "evaluationContextEnrichment": {
                     "type": "object"
                 },
                 "name": {
                     "type": "string"
+                },
+                "pollingInterval": {
+                    "description": "PollingInterval is in milliseconds, between MinPollingInterval and\nMaxPollingInterval.",
+                    "type": "integer",
+                    "example": 60000
+                },
+                "startWithRetrieverError": {
+                    "type": "boolean"
                 }
             }
         },

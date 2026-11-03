@@ -56,6 +56,15 @@ func TestFlagsetRepoCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "updated", updated.Description)
 	assert.Equal(t, "prod", updated.Name, "nil name preserved")
+	assert.Equal(t, 60000, updated.PollingInterval, "nil polling interval preserved")
+
+	updated, err = repo.Update(ctx, created.ID, &model.UpdateFlagsetRequest{PollingInterval: new(5000)})
+	require.NoError(t, err)
+	assert.Equal(t, 5000, updated.PollingInterval)
+	assert.Equal(t, "updated", updated.Description, "nil description preserved")
+	list, err = repo.ListByTeam(ctx, team.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 5000, list[0].PollingInterval)
 
 	_, err = repo.Update(ctx, "00000000-0000-0000-0000-000000000000", &model.UpdateFlagsetRequest{Name: new("x")})
 	assert.ErrorIs(t, err, repository.ErrNotFound)
@@ -303,15 +312,30 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, repo.SoftDelete(ctx, deleted.ID))
+	_, err := repo.Update(ctx, dev.ID, &model.UpdateFlagsetRequest{
+		PollingInterval: new(5000), Environment: new("development"),
+		EvaluationContextEnrichment: json.RawMessage(`{"env":"dev"}`),
+	})
+	require.NoError(t, err)
 	otherTeam := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Other").ID, "Platform")
 	_ = testutil.SeedFlagset(t, db, otherTeam.ID, "other")
 
 	got, err := repo.ListForRelayProxy(ctx, company.ID)
 	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.JSONEq(t, `{"env":"dev"}`, string(got[2].EvaluationContextEnrichment))
+	got[2].EvaluationContextEnrichment = nil // jsonb reformats it; compared above
+	defaults := model.RelayProxySettings{PollingInterval: 60000}
 	assert.Equal(t, []model.RelayProxyFlagset{
-		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}},
-		{ID: prod.ID, Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_first", "goff_second"}},
-		{ID: dev.ID, Name: "dev", TeamName: "Web", APIKeys: []string{"goff_dev"}},
+		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}, RelayProxySettings: defaults},
+		{
+			ID: prod.ID, Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_first", "goff_second"},
+			RelayProxySettings: defaults,
+		},
+		{
+			ID: dev.ID, Name: "dev", TeamName: "Web", APIKeys: []string{"goff_dev"},
+			RelayProxySettings: model.RelayProxySettings{PollingInterval: 5000, Environment: "development"},
+		},
 	}, got, "live flagsets of this company only, ordered by team then name, keys oldest first")
 
 	_, err = repo.ListForRelayProxy(ctx, "00000000-0000-0000-0000-000000000000")

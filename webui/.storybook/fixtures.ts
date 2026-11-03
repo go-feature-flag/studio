@@ -92,6 +92,14 @@ export const IDENTITIES = {
   },
 } satisfies Record<string, MeResponse>;
 
+const RELAY_PROXY_DEFAULTS = {
+  pollingInterval: 60000,
+  startWithRetrieverError: false,
+  enablePollingJitter: false,
+  disableNotifierOnInit: false,
+  environment: "",
+};
+
 export const FLAGSETS: Flagset[] = [
   {
     id: "fs-web",
@@ -103,6 +111,11 @@ export const FLAGSETS: Flagset[] = [
     enabledFlagCount: 9,
     evaluationContextEnrichment: { env: "production", region: "eu-west-1", tier: 2 },
     defaultTestingEvaluationContext: { targetingKey: "user-42", country: "FR", beta: true },
+    pollingInterval: 30000,
+    startWithRetrieverError: true,
+    enablePollingJitter: true,
+    disableNotifierOnInit: false,
+    environment: "production",
     ...stamp,
   },
   {
@@ -113,6 +126,7 @@ export const FLAGSETS: Flagset[] = [
     apiKeyCount: 1,
     flagCount: 6,
     enabledFlagCount: 2,
+    ...RELAY_PROXY_DEFAULTS,
     ...stamp,
   },
   {
@@ -123,6 +137,7 @@ export const FLAGSETS: Flagset[] = [
     apiKeyCount: 0,
     flagCount: 0,
     enabledFlagCount: 0,
+    ...RELAY_PROXY_DEFAULTS,
     ...stamp,
   },
 ];

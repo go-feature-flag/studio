@@ -25,8 +25,21 @@ type Flagset struct {
 	// DefaultTestingEvaluationContext is the evaluation context proposed by
 	// default in the UI's flag test/evaluate panel for flags in this flagset.
 	DefaultTestingEvaluationContext json.RawMessage `db:"default_testing_evaluation_context" json:"defaultTestingEvaluationContext,omitempty" swaggertype:"object"` //nolint:lll // struct tags cannot be wrapped
-	CreatedAt                       time.Time       `db:"created_at" json:"createdAt"`
-	UpdatedAt                       time.Time       `db:"updated_at" json:"updatedAt"`
+	RelayProxySettings
+	CreatedAt time.Time `db:"created_at" json:"createdAt"`
+	UpdatedAt time.Time `db:"updated_at" json:"updatedAt"`
+}
+
+// RelayProxySettings are the flagset's options in the generated goff-proxy.yaml
+// (its flagSets[] entry, same names); the defaults are the relay proxy's.
+type RelayProxySettings struct {
+	// PollingInterval is how often, in milliseconds, the relay proxy reloads
+	// the flagset's flags.
+	PollingInterval         int    `db:"polling_interval" json:"pollingInterval" example:"60000"`
+	StartWithRetrieverError bool   `db:"start_with_retriever_error" json:"startWithRetrieverError"`
+	EnablePollingJitter     bool   `db:"enable_polling_jitter" json:"enablePollingJitter"`
+	DisableNotifierOnInit   bool   `db:"disable_notifier_on_init" json:"disableNotifierOnInit"`
+	Environment             string `db:"environment" json:"environment" example:"production"`
 }
 
 type CreateFlagsetRequest struct {
@@ -43,7 +56,22 @@ type UpdateFlagsetRequest struct {
 	Description                     *string         `json:"description,omitempty"`
 	EvaluationContextEnrichment     json.RawMessage `json:"evaluationContextEnrichment,omitempty" swaggertype:"object"`
 	DefaultTestingEvaluationContext json.RawMessage `json:"defaultTestingEvaluationContext,omitempty" swaggertype:"object"`
+	// PollingInterval is in milliseconds, between MinPollingInterval and
+	// MaxPollingInterval.
+	PollingInterval         *int    `json:"pollingInterval,omitempty" example:"60000"`
+	StartWithRetrieverError *bool   `json:"startWithRetrieverError,omitempty"`
+	EnablePollingJitter     *bool   `json:"enablePollingJitter,omitempty"`
+	DisableNotifierOnInit   *bool   `json:"disableNotifierOnInit,omitempty"`
+	Environment             *string `json:"environment,omitempty" example:"production"`
 }
+
+// The relay proxy accepts any interval from 1s, and a negative one to disable
+// polling. Studio is stricter: polling is how flag edits reach the relay
+// proxy, so it can't be disabled, and a day caps the wait for an edit.
+const (
+	MinPollingInterval = 1000
+	MaxPollingInterval = 24 * 60 * 60 * 1000
+)
 
 type FlagsetAPIKey struct {
 	ID        string  `db:"id" json:"id"`
@@ -67,4 +95,7 @@ type RelayProxyFlagset struct {
 	Name     string   `db:"name" json:"name"`
 	TeamName string   `db:"team_name" json:"teamName"`
 	APIKeys  []string `db:"api_keys" json:"apiKeys"`
+	// EvaluationContextEnrichment is a JSON object, or empty when unset.
+	EvaluationContextEnrichment json.RawMessage `db:"evaluation_context_enrichment" json:"evaluationContextEnrichment,omitempty"` //nolint:lll // struct tags cannot be wrapped
+	RelayProxySettings
 }

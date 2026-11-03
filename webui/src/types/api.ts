@@ -66,6 +66,12 @@ export interface Flagset {
   enabledFlagCount: number;
   evaluationContextEnrichment?: Record<string, unknown> | null;
   defaultTestingEvaluationContext?: Record<string, unknown> | null;
+  // Milliseconds; written into the generated relay proxy config.
+  pollingInterval: number;
+  startWithRetrieverError: boolean;
+  enablePollingJitter: boolean;
+  disableNotifierOnInit: boolean;
+  environment: string;
   createdAt: string;
   updatedAt: string;
 }

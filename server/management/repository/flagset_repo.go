@@ -23,12 +23,18 @@ const flagsetCols = `id, team_id, name, description,
 	(SELECT COUNT(*) FROM flags f WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL) AS flag_count,
 	(SELECT COUNT(*) FROM flags f
 	 WHERE f.flagset_id = flagsets.id AND f.deleted_at IS NULL AND f.disabled = FALSE) AS enabled_flag_count,
-	evaluation_context_enrichment, default_testing_evaluation_context, created_at, updated_at`
+	evaluation_context_enrichment, default_testing_evaluation_context, ` + relayProxyCols + `, created_at, updated_at`
+
+const relayProxyCols = `polling_interval, start_with_retriever_error, enable_polling_jitter,
+	disable_notifier_on_init, environment`
 
 func scanFlagset(row pgx.Row, fs *model.Flagset) error {
 	return row.Scan(
 		&fs.ID, &fs.TeamID, &fs.Name, &fs.Description, &fs.APIKeyCount, &fs.FlagCount, &fs.EnabledFlagCount,
-		&fs.EvaluationContextEnrichment, &fs.DefaultTestingEvaluationContext, &fs.CreatedAt, &fs.UpdatedAt,
+		&fs.EvaluationContextEnrichment, &fs.DefaultTestingEvaluationContext,
+		&fs.PollingInterval, &fs.StartWithRetrieverError, &fs.EnablePollingJitter, &fs.DisableNotifierOnInit,
+		&fs.Environment,
+		&fs.CreatedAt, &fs.UpdatedAt,
 	)
 }
 
@@ -139,11 +145,18 @@ func (r *FlagsetRepo) Update(ctx context.Context, id string, req *model.UpdateFl
 			description = COALESCE($3, description),
 			evaluation_context_enrichment = CASE WHEN $4 THEN $5 ELSE evaluation_context_enrichment END,
 			default_testing_evaluation_context = CASE WHEN $6 THEN $7 ELSE default_testing_evaluation_context END,
+			polling_interval = COALESCE($8, polling_interval),
+			start_with_retriever_error = COALESCE($9, start_with_retriever_error),
+			enable_polling_jitter = COALESCE($10, enable_polling_jitter),
+			disable_notifier_on_init = COALESCE($11, disable_notifier_on_init),
+			environment = COALESCE($12, environment),
 			updated_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL
 		RETURNING `+flagsetCols,
 		id, req.Name, req.Description,
 		len(req.EvaluationContextEnrichment) > 0, j[0], len(req.DefaultTestingEvaluationContext) > 0, j[1],
+		req.PollingInterval, req.StartWithRetrieverError, req.EnablePollingJitter, req.DisableNotifierOnInit,
+		req.Environment,
 	), &fs)
 	if err != nil {
 		if isNoRows(err) {
@@ -264,7 +277,8 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 		return nil, ErrNotFound
 	}
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT fs.id, fs.name, t.name AS team_name,
+		SELECT fs.id, fs.name, t.name AS team_name, fs.evaluation_context_enrichment,
+			`+relayProxyCols+`,
 			COALESCE(array_agg(k.api_key ORDER BY k.created_at, k.id) FILTER (WHERE k.api_key IS NOT NULL), '{}') AS api_keys
 		FROM flagsets fs
 		JOIN teams t ON t.id = fs.team_id
