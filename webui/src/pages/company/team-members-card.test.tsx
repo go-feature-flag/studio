@@ -107,8 +107,9 @@ describe("TeamMembersCard add member", () => {
   });
 
   const tests = [
-    { name: "success toasts and refetches", outcome: "success" as const },
-    { name: "error toasts the failure", outcome: "error" as const },
+    { name: "success toasts and refetches", outcome: "success" as const, pick: "admin", wantRole: "admin" },
+    { name: "error toasts the failure", outcome: "error" as const, pick: "admin", wantRole: "admin" },
+    { name: "submits the default editor role", outcome: "success" as const, pick: undefined, wantRole: "editor" },
   ];
   for (const tt of tests) {
     it(tt.name, async () => {
@@ -118,15 +119,17 @@ describe("TeamMembersCard add member", () => {
       const picker = screen.getAllByRole("combobox")[0];
       await user.click(picker);
       await user.click(await screen.findByRole("option", { name: /bob@acme\.com/ }));
-      // Second combobox is the add form's role select.
-      await user.click(screen.getAllByRole("combobox")[1]);
-      await user.click(screen.getByRole("option", { name: "editor" }));
+      if (tt.pick) {
+        // Second combobox is the add form's role select.
+        await user.click(screen.getAllByRole("combobox")[1]);
+        await user.click(screen.getByRole("option", { name: tt.pick }));
+      }
       await user.click(addButton()!);
 
       expect(lastCall()).toMatchObject({
         url: expect.stringMatching(/\/teams\/t1\/members$/),
         method: "post",
-        values: { email: "bob@acme.com", role: "editor" },
+        values: { email: "bob@acme.com", role: tt.wantRole },
       });
       if (tt.outcome === "success") {
         expect(h.toastSuccess).toHaveBeenCalledWith("team.detail.added");
@@ -171,8 +174,9 @@ describe("TeamMembersCard change role", () => {
 
 describe("TeamMembersCard remove member", () => {
   const tests = [
-    { name: "success toasts and refetches", outcome: "success" as const },
-    { name: "error toasts the failure", outcome: "error" as const },
+    { name: "success toasts and refetches", outcome: "success" as const, pick: "admin", wantRole: "admin" },
+    { name: "error toasts the failure", outcome: "error" as const, pick: "admin", wantRole: "admin" },
+    { name: "submits the default editor role", outcome: "success" as const, pick: undefined, wantRole: "editor" },
   ];
   for (const tt of tests) {
     it(tt.name, async () => {

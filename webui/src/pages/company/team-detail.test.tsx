@@ -42,6 +42,7 @@ const renderPage = (path = "/company/teams/t1") =>
         <Route path="/" element={<p>home</p>} />
         <Route path="/company/teams" element={<p>teams list</p>} />
         <Route path="/company/teams/:teamId" element={<><TeamDetailPage /><Location /></>} />
+        <Route path="/company/teams/:teamId/members" element={<><TeamDetailPage section="members" /><Location /></>} />
         <Route path="/no-param" element={<TeamDetailPage />} />
       </Routes>
     </MemoryRouter>,
@@ -79,29 +80,44 @@ describe("TeamDetailPage", () => {
     });
   }
 
-  const editable = [true, false];
-  for (const e of editable) {
-    it(`passes editable=${e} to both cards`, () => {
-      h.editable = e;
-      renderPage();
-      expect(screen.getByText(`details:t1:${e}`)).toBeInTheDocument();
-      expect(screen.getByText(`members:t1:${e}`)).toBeInTheDocument();
+  const sections = [
+    { name: "details section shows only the details card", path: "/company/teams/t1", editable: true, want: "details:t1:true", hidden: "members:t1:true" },
+    { name: "members section shows only the members card", path: "/company/teams/t1/members", editable: true, want: "members:t1:true", hidden: "details:t1:true" },
+    { name: "read-only team passes editable=false", path: "/company/teams/t1/members", editable: false, want: "members:t1:false", hidden: "details:t1:false" },
+  ];
+  for (const tt of sections) {
+    it(tt.name, () => {
+      h.editable = tt.editable;
+      renderPage(tt.path);
+      expect(screen.getByText(tt.want)).toBeInTheDocument();
+      expect(screen.queryByText(tt.hidden)).not.toBeInTheDocument();
+    });
+  }
+
+  const nav = [
+    { name: "members tab links to the members route", from: "/company/teams/t1", click: /^nav\.members/, want: "/company/teams/t1/members" },
+    { name: "details tab links back to the team root", from: "/company/teams/t1/members", click: /^nav\.details/, want: "/company/teams/t1" },
+  ];
+  for (const tt of nav) {
+    it(tt.name, async () => {
+      const user = userEvent.setup();
+      renderPage(tt.from);
+      await user.click(screen.getByRole("button", { name: tt.click }));
+      expect(screen.getByRole("status")).toHaveTextContent(tt.want);
+      expect(screen.getByRole("button", { name: tt.click })).toHaveAttribute("aria-current", "page");
     });
   }
 
   const access = [
-    { name: "company admin: company crumbs, back goes to the teams list", admin: true, wantCrumbs: true, want: "teams list" },
-    { name: "team member: no company crumbs, back goes home", admin: false, wantCrumbs: false, want: "home" },
+    { name: "company admin sees the company crumbs", admin: true },
+    { name: "team member sees no company crumbs", admin: false },
   ];
   for (const tt of access) {
-    it(tt.name, async () => {
+    it(tt.name, () => {
       h.companyAdmin = tt.admin;
-      const user = userEvent.setup();
       renderPage();
-      expect(screen.queryByRole("link", { name: "nav.company" }) !== null).toBe(tt.wantCrumbs);
-      expect(screen.queryByRole("link", { name: "nav.teams" }) !== null).toBe(tt.wantCrumbs);
-      await user.click(screen.getByRole("button", { name: "common.back" }));
-      expect(screen.getByText(tt.want)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "nav.company" }) !== null).toBe(tt.admin);
+      expect(screen.queryByRole("link", { name: "nav.teams" }) !== null).toBe(tt.admin);
     });
   }
 });

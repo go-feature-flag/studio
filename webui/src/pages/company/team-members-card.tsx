@@ -52,6 +52,7 @@ import type { CompanyMember, Role, TeamMember } from "@/types/api";
 type AddMemberValues = { email: string; role: Role };
 
 const ROLES: Role[] = ["admin", "editor", "viewer"];
+const EMPTY_ADD: AddMemberValues = { email: "", role: "editor" };
 
 export function TeamMembersCard({
   teamId,
@@ -101,7 +102,7 @@ export function TeamMembersCard({
 
   const addForm = useForm<BaseRecord, RefineHttpError, AddMemberValues>({
     resolver: zodResolver(addMemberSchema),
-    defaultValues: { email: "", role: "viewer" },
+    defaultValues: EMPTY_ADD,
   });
 
   const refetch = () => query.refetch();
@@ -118,7 +119,7 @@ export function TeamMembersCard({
       {
         onSuccess: () => {
           toast.success(t("team.detail.added"));
-          addForm.reset({ email: "", role: "viewer" });
+          addForm.reset(EMPTY_ADD);
           refetch();
         },
         onError: (err) => {

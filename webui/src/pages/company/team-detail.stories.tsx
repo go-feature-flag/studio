@@ -22,6 +22,10 @@ export const CompanyAdmin: Story = {};
 export const TeamAdmin: Story = { parameters: { identity: IDENTITIES.teamAdmin } };
 // Other team members see it read-only.
 export const Member: Story = { parameters: { identity: IDENTITIES.member } };
+export const MembersSection: Story = {
+  args: { section: "members" },
+  parameters: { route: { path: "/company/teams/:teamId/members", url: "/company/teams/t-core/members" } },
+};
 export const Loading: Story = {
   parameters: {
     data: { "/teams/t-core": LOADING, "/teams/t-core/members": LOADING },

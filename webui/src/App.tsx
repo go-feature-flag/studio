@@ -281,14 +281,24 @@ function App() {
                           </RbacRoute>
                         }
                       />
-                      <Route
-                        path=":teamId"
-                        element={
-                          <RbacRoute resource="team-detail" action="show">
-                            <TeamDetailPage />
-                          </RbacRoute>
-                        }
-                      />
+                      <Route path=":teamId">
+                        <Route
+                          index
+                          element={
+                            <RbacRoute resource="team-detail" action="show">
+                              <TeamDetailPage section="details" />
+                            </RbacRoute>
+                          }
+                        />
+                        <Route
+                          path="members"
+                          element={
+                            <RbacRoute resource="team-detail" action="show">
+                              <TeamDetailPage section="members" />
+                            </RbacRoute>
+                          }
+                        />
+                      </Route>
                     </Route>
                   </Route>
                   <Route path="/companies">
