@@ -1,6 +1,6 @@
-// NotifiersTab: list a flagset's relay proxy notifiers, switch them on and off,
-// and add, edit or remove them through NotifierDialog. Every change saves the
-// whole list.
+// NotifiersTab: one card per notifier kind to add a notifier, then the
+// flagset's notifiers, switched on and off in place and edited or removed
+// through NotifierDialog. Every change saves the whole list.
 
 import { useState } from "react";
 import { useCustom, useCustomMutation, useTranslate } from "@refinedev/core";
@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -27,8 +26,10 @@ import { cn } from "@/lib/utils";
 import type { Notifier, NotifierKind } from "@/types/api";
 import { NotifierDialog, NotifierLogo } from "./notifier-dialog";
 
-// dialog: null when closed; index null when adding.
-type DialogState = { index: number | null } | null;
+const NOTIFIER_KINDS: NotifierKind[] = ["slack", "discord", "microsoftteams", "webhook"];
+
+// dialog: null when closed; index null when adding a notifier of `kind`.
+type DialogState = { index: number; kind?: never } | { index: null; kind: NotifierKind } | null;
 
 export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canManage: boolean }) {
   const t = useTranslate();
@@ -62,7 +63,6 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
     return same ? `${label(kind)} ${same + 1}` : label(kind);
   };
   const on = notifiers.filter((n) => n.enabled).length;
-  const index = dialog?.index ?? null;
 
   return (
     <Card>
@@ -74,14 +74,6 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
             {t("flagset.settings.notifiers.summary", { count: notifiers.length, on, off: notifiers.length - on })}
           </p>
         )}
-        {canManage && notifiers.length > 0 && (
-          <CardAction>
-            <Button onClick={() => setDialog({ index: null })}>
-              <PlusIcon />
-              {t("flagset.settings.notifiers.add")}
-            </Button>
-          </CardAction>
-        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {!canManage && (
@@ -89,6 +81,29 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>{t("flagset.settings.notifiers.readOnly")}</AlertDescription>
           </Alert>
+        )}
+
+        {canManage && (
+          <section aria-labelledby="notifier-kinds" className="flex flex-col gap-2">
+            <h3 id="notifier-kinds" className="text-xs font-medium text-muted-foreground">
+              {t("flagset.settings.notifiers.addHeading")}
+            </h3>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-2">
+              {NOTIFIER_KINDS.map((k) => (
+                <Button
+                  key={k}
+                  variant="outline"
+                  className="h-14 justify-start gap-3 px-3.5"
+                  aria-label={t("flagset.settings.notifiers.addKind", { kind: label(k) })}
+                  onClick={() => setDialog({ index: null, kind: k })}
+                >
+                  <NotifierLogo kind={k} className="size-6" />
+                  <span className="flex-1 text-left">{label(k)}</span>
+                  <PlusIcon className="text-muted-foreground" />
+                </Button>
+              ))}
+            </div>
+          </section>
         )}
 
         {query.isLoading ? (
@@ -101,14 +116,10 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
             <BellIcon className="size-5" />
             <div className="flex flex-col gap-1">
               <span className="font-medium text-foreground">{t("flagset.settings.notifiers.emptyTitle")}</span>
-              <span>{t("flagset.settings.notifiers.emptyDesc")}</span>
+              <span>
+                {canManage ? t("flagset.settings.notifiers.emptyDesc") : t("flagset.settings.notifiers.emptyReadOnly")}
+              </span>
             </div>
-            {canManage && (
-              <Button onClick={() => setDialog({ index: null })}>
-                <PlusIcon />
-                {t("flagset.settings.notifiers.addFirst")}
-              </Button>
-            )}
           </EmptyState>
         ) : (
           <ul className="divide-y overflow-hidden rounded-lg border bg-background">
@@ -168,13 +179,17 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
 
       {dialog && (
         <NotifierDialog
-          initial={index === null ? null : notifiers[index]}
-          defaultName={defaultName}
+          isNew={dialog.index === null}
+          initial={
+            dialog.index === null
+              ? { name: defaultName(dialog.kind), kind: dialog.kind, enabled: true }
+              : notifiers[dialog.index]
+          }
           saving={mutation.isPending}
           onClose={() => setDialog(null)}
-          onRemove={() => save(notifiers.filter((_, j) => j !== index))}
+          onRemove={() => save(notifiers.filter((_, j) => j !== dialog.index))}
           onSave={(n) =>
-            save(index === null ? [...notifiers, n] : notifiers.map((x, j) => (j === index ? n : x)))
+            save(dialog.index === null ? [...notifiers, n] : notifiers.map((x, j) => (j === dialog.index ? n : x)))
           }
         />
       )}

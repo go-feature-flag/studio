@@ -1,9 +1,9 @@
-// NotifierDialog adds or edits one notifier of a flagset: pick a kind, then
-// fill in its fields. The parent saves the whole list.
+// NotifierDialog adds or edits one notifier of a flagset. The kind is chosen
+// before it opens (the tab's kind cards); the parent saves the whole list.
 
 import { useState } from "react";
 import { useTranslate } from "@refinedev/core";
-import { ChevronLeftIcon, PlusIcon, Trash2Icon, WebhookIcon, XIcon } from "lucide-react";
+import { PlusIcon, Trash2Icon, WebhookIcon, XIcon } from "lucide-react";
 import slackLogo from "@/assets/notifiers/slack.svg";
 import discordLogo from "@/assets/notifiers/discord.svg";
 import teamsLogo from "@/assets/notifiers/microsoftteams.svg";
@@ -31,8 +31,6 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { Notifier, NotifierKind } from "@/types/api";
 import { Setting } from "./setting";
-
-const NOTIFIER_KINDS: NotifierKind[] = ["slack", "discord", "microsoftteams", "webhook"];
 
 const LOGOS: Partial<Record<NotifierKind, string>> = {
   slack: slackLogo,
@@ -84,82 +82,43 @@ function fromDraft(d: Draft): Notifier {
 
 export function NotifierDialog({
   initial,
-  defaultName,
+  isNew,
   saving,
   onSave,
   onRemove,
   onClose,
 }: {
-  // The notifier being edited; null adds a new one.
-  initial: Notifier | null;
-  defaultName: (kind: NotifierKind) => string;
+  // The notifier to edit, or the blank one to add when isNew.
+  initial: Notifier;
+  isNew: boolean;
   saving: boolean;
   onSave: (n: Notifier) => void;
   onRemove: () => void;
   onClose: () => void;
 }) {
   const t = useTranslate();
-  const [draft, setDraft] = useState<Draft | null>(initial && toDraft(initial));
+  const [draft, setDraft] = useState<Draft>(() => toDraft(initial));
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const set = (patch: Partial<Draft>) => setDraft((d) => d && { ...d, ...patch });
-  const label = (k: NotifierKind) => t(`flagset.settings.notifiers.${k}.label`);
+  const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const kindLabel = t(`flagset.settings.notifiers.${draft.kind}.label`);
 
-  const pick = (kind: NotifierKind) =>
-    setDraft({ name: defaultName(kind), kind, enabled: true, url: "", secret: "", headers: [] });
-
-  const urlBad = !!draft && draft.url.trim() !== "" && !isHttpUrl(draft.url);
-  const canSave = !!draft && draft.name.trim() !== "" && isHttpUrl(draft.url) && !saving;
-
-  let title = t("flagset.settings.notifiers.pickTitle");
-  let description = t("flagset.settings.notifiers.pickDesc");
-  if (draft) {
-    title = t(`flagset.settings.notifiers.${initial ? "editTitle" : "addTitle"}`, { kind: label(draft.kind) });
-    description = t(`flagset.settings.notifiers.${draft.kind}.hint`);
-  }
+  const urlBad = draft.url.trim() !== "" && !isHttpUrl(draft.url);
+  const canSave = draft.name.trim() !== "" && isHttpUrl(draft.url) && !saving;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <div className="flex items-start gap-2">
-            {draft && !initial && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="-ml-2 size-8 shrink-0"
-                aria-label={t("flagset.settings.notifiers.back")}
-                onClick={() => setDraft(null)}
-              >
-                <ChevronLeftIcon />
-              </Button>
-            )}
-            <div className="flex flex-col gap-1.5">
-              <DialogTitle>{title}</DialogTitle>
-              <DialogDescription>{description}</DialogDescription>
-            </div>
-          </div>
+          <DialogTitle>
+            {t(`flagset.settings.notifiers.${isNew ? "addTitle" : "editTitle"}`, { kind: kindLabel })}
+          </DialogTitle>
+          <DialogDescription>{t(`flagset.settings.notifiers.${draft.kind}.hint`)}</DialogDescription>
         </DialogHeader>
 
-        {!draft ? (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {NOTIFIER_KINDS.map((k) => (
-              <Button
-                key={k}
-                variant="outline"
-                className="h-auto min-h-28 flex-col gap-3 py-4 whitespace-normal"
-                onClick={() => pick(k)}
-              >
-                <NotifierLogo kind={k} className="size-9" />
-                {label(k)}
-              </Button>
-            ))}
-          </div>
-        ) : (
-          <NotifierForm draft={draft} set={set} urlBad={urlBad} />
-        )}
+        <NotifierForm draft={draft} set={set} urlBad={urlBad} />
 
         <DialogFooter className="items-center sm:justify-between">
-          {initial ? (
+          {!isNew ? (
             <Button
               variant="ghost"
               className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:-ml-3"
@@ -176,11 +135,9 @@ export function NotifierDialog({
             <Button variant="outline" onClick={onClose}>
               {t("common.cancel")}
             </Button>
-            {draft && (
-              <Button onClick={() => onSave(fromDraft(draft))} disabled={!canSave}>
-                {initial ? t("flagset.settings.notifiers.save") : t("flagset.settings.notifiers.add")}
-              </Button>
-            )}
+            <Button onClick={() => onSave(fromDraft(draft))} disabled={!canSave}>
+              {isNew ? t("flagset.settings.notifiers.add") : t("flagset.settings.notifiers.save")}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
@@ -190,7 +147,7 @@ export function NotifierDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>{t("flagset.settings.notifiers.removeTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {t("flagset.settings.notifiers.removeDesc", { name: initial?.name })}
+              {t("flagset.settings.notifiers.removeDesc", { name: initial.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

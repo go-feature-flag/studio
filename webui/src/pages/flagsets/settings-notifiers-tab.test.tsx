@@ -100,17 +100,23 @@ describe("NotifiersTab roles", () => {
     it(tt.name, () => {
       h.notifiers = [slack];
       render(<NotifiersTab flagsetId="fs-1" canManage={tt.canManage} />);
-      expect(screen.queryByRole("button", { name: T("add") }) !== null).toBe(tt.canManage);
+      expect(screen.queryAllByRole("button", { name: T("addKind") })).toHaveLength(tt.canManage ? 4 : 0);
       expect(screen.queryByRole("button", { name: T("edit") }) !== null).toBe(tt.canManage);
       expect(screen.getByRole("switch").hasAttribute("disabled")).toBe(!tt.canManage);
       expect(screen.queryByText(T("readOnly")) !== null).toBe(!tt.canManage);
     });
   }
 
-  it("editor sees no add button on the empty state", () => {
-    render(<NotifiersTab flagsetId="fs-1" canManage={false} />);
-    expect(screen.queryByRole("button", { name: T("addFirst") })).toBeNull();
-  });
+  const empty = [
+    { name: "admin's empty state points at the kind cards", canManage: true, want: T("emptyDesc") },
+    { name: "editor's empty state says an admin can add one", canManage: false, want: T("emptyReadOnly") },
+  ];
+  for (const tt of empty) {
+    it(tt.name, () => {
+      render(<NotifiersTab flagsetId="fs-1" canManage={tt.canManage} />);
+      expect(screen.getByText(tt.want)).toBeInTheDocument();
+    });
+  }
 });
 
 describe("NotifiersTab saving", () => {
@@ -145,18 +151,20 @@ describe("NotifiersTab saving", () => {
 });
 
 describe("NotifierDialog add", () => {
-  const pickSlack = async (u: ReturnType<typeof user>) => {
-    await u.click(screen.getByRole("button", { name: T("add") }));
-    const dialog = screen.getByRole("dialog");
-    await u.click(within(dialog).getByRole("button", { name: T("slack.label") }));
-    return dialog;
+  // Kind cards come in order: slack, discord, microsoftteams, webhook.
+  const addKind = async (u: ReturnType<typeof user>, i: number) => {
+    await u.click(screen.getAllByRole("button", { name: T("addKind") })[i]);
+    return screen.getByRole("dialog");
   };
+  const pickSlack = (u: ReturnType<typeof user>) => addKind(u, 0);
 
   it("picks a kind, names it after the kind and appends it once the URL is valid", async () => {
     h.notifiers = [slack];
     const u = user();
     render(<NotifiersTab flagsetId="fs-1" canManage />);
     const dialog = await pickSlack(u);
+    expect(within(dialog).getByText(T("addTitle"))).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "common.remove" })).toBeNull();
     expect(within(dialog).getByLabelText(T("name"))).toHaveValue("flagset.settings.notifiers.slack.label 2");
     const add = within(dialog).getByRole("button", { name: T("add") });
     expect(add).toBeDisabled();
@@ -175,23 +183,20 @@ describe("NotifierDialog add", () => {
     ]);
   });
 
-  it("back returns to the kind picker, and cancel closes", async () => {
+  it("cancel closes without saving", async () => {
     h.notifiers = [slack];
     const u = user();
     render(<NotifiersTab flagsetId="fs-1" canManage />);
     const dialog = await pickSlack(u);
-    await u.click(within(dialog).getByRole("button", { name: T("back") }));
-    expect(within(dialog).getByText(T("pickDesc"))).toBeInTheDocument();
     await u.click(within(dialog).getByRole("button", { name: "common.cancel" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(h.mutate).not.toHaveBeenCalled();
   });
 
   it("adds a webhook with a secret and its non-blank headers", async () => {
     const u = user();
     render(<NotifiersTab flagsetId="fs-1" canManage />);
-    await u.click(screen.getByRole("button", { name: T("addFirst") }));
-    const dialog = screen.getByRole("dialog");
-    await u.click(within(dialog).getByRole("button", { name: T("webhook.label") }));
+    const dialog = await addKind(u, 3);
     await u.type(within(dialog).getByLabelText(T("endpointUrl")), "https://x.example/hook");
     await u.type(within(dialog).getByLabelText(new RegExp(T("secret"))), "k");
     await u.click(within(dialog).getByRole("button", { name: T("addHeader") }));

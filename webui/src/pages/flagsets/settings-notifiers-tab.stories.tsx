@@ -19,8 +19,8 @@ export const Admin: Story = {};
 export const ReadOnly: Story = { args: { canManage: false } };
 export const Empty: Story = { parameters: { data: { "/notifiers": [] } } };
 export const Loading: Story = { parameters: { data: { "/notifiers": LOADING } } };
-export const PickKind: Story = {
+export const AddDialog: Story = {
   play: async ({ canvasElement }) => {
-    await userEvent.click(await within(canvasElement).findByRole("button", { name: /add notifier/i }));
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: /add slack notifier/i }));
   },
 };
