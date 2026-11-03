@@ -2,14 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { createElement, type PropsWithChildren } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { TeamMembership } from "@/types/api";
+import type { CompanyMembership, TeamMembership, User } from "@/types/api";
 
 const state = vi.hoisted(() => ({
   membership: null as TeamMembership[] | null,
+  company: null as CompanyMembership | null,
+  user: null as User | null,
 }));
 
 vi.mock("@/providers/auth", () => ({
   getCachedMembership: () => state.membership,
+  getCachedCompany: () => state.company,
+  getCachedUser: () => state.user,
 }));
 
 import { ActiveTeamProvider, useActiveTeam } from "./use-active-team";
@@ -36,16 +40,23 @@ describe("useActiveTeam", () => {
   beforeEach(() => {
     localStorage.clear();
     state.membership = null;
+    state.company = null;
+    state.user = null;
   });
 
   const tests: {
     name: string;
     stored: string | null;
     membership: TeamMembership[] | null;
+    company?: CompanyMembership;
+    user?: User;
     wantId: string | null;
     wantMemberships: TeamMembership[];
   }[] = [
-    { name: "stored pick wins", stored: "t9", membership: [team("t1")], wantId: "t9", wantMemberships: [team("t1")] },
+    { name: "stored pick wins", stored: "t2", membership: [team("t1"), team("t2")], wantId: "t2", wantMemberships: [team("t1"), team("t2")] },
+    { name: "stale pick from another account falls back", stored: "t9", membership: [team("t1")], wantId: "t1", wantMemberships: [team("t1")] },
+    { name: "company admin keeps a non-member pick", stored: "t9", membership: [team("t1")], company: { role: "admin" } as CompanyMembership, wantId: "t9", wantMemberships: [team("t1")] },
+    { name: "super admin keeps a non-member pick", stored: "t9", membership: [], user: { isSuperAdmin: true } as User, wantId: "t9", wantMemberships: [] },
     { name: "falls back to the first membership", stored: null, membership: [team("t1"), team("t2")], wantId: "t1", wantMemberships: [team("t1"), team("t2")] },
     { name: "no membership cached", stored: null, membership: null, wantId: null, wantMemberships: [] },
   ];
@@ -53,6 +64,8 @@ describe("useActiveTeam", () => {
   for (const tt of tests) {
     it(tt.name, () => {
       state.membership = tt.membership;
+      state.company = tt.company ?? null;
+      state.user = tt.user ?? null;
       if (tt.stored) localStorage.setItem("activeTeamId", tt.stored);
       const { result } = setup();
       expect(result.current.activeTeamId).toBe(tt.wantId);
@@ -61,7 +74,7 @@ describe("useActiveTeam", () => {
   }
 
   it("setActiveTeamId persists, re-renders and invalidates access queries", () => {
-    state.membership = [team("t1")];
+    state.membership = [team("t1"), team("t2")];
     const { result, invalidate } = setup();
 
     act(() => result.current.setActiveTeamId("t2"));
@@ -75,6 +88,7 @@ describe("useActiveTeam", () => {
   });
 
   it("picks up changes made in another tab via the storage event", () => {
+    state.membership = [team("t1"), team("other-tab")];
     const { result } = setup();
     localStorage.setItem("activeTeamId", "other-tab");
     act(() => {

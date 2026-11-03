@@ -8,7 +8,8 @@ import {
   type PropsWithChildren,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getCachedMembership } from "@/providers/auth";
+import { getCachedMembership, getCachedUser } from "@/providers/auth";
+import { effectiveTeamRole } from "@/providers/access-control";
 import type { TeamMembership } from "@/types/api";
 
 const STORAGE_KEY = "activeTeamId";
@@ -54,7 +55,14 @@ export function ActiveTeamProvider({ children }: PropsWithChildren) {
   }, []);
 
   const memberships = getCachedMembership() ?? [];
-  const activeTeamId = stored ?? memberships[0]?.teamId ?? null;
+  // localStorage outlives the session: drop a pick left by another account
+  // (or a deleted team) instead of querying a team this user can't read.
+  const canUse = (id: string) =>
+    !!getCachedUser()?.isSuperAdmin || !!effectiveTeamRole(id);
+  const activeTeamId =
+    (stored && canUse(stored) ? stored : null) ??
+    memberships[0]?.teamId ??
+    null;
 
   return createElement(
     ActiveTeamContext.Provider,
