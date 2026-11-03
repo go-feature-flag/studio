@@ -143,6 +143,9 @@ export const FLAGSETS: Flagset[] = [
   },
 ];
 
+const atDay = (days: number) =>
+  new Date((Math.floor(Date.now() / 86_400_000) + days) * 86_400_000 + 9 * 3_600_000).toISOString();
+
 export const FLAG: Flag = {
   id: "f-checkout",
   flagsetId: "fs-web",
@@ -166,6 +169,16 @@ export const FLAG: Flag = {
       tags: ["checkout", "q4-launch"],
     },
     trackEvents: true,
+    // Whole-minute dates around now, so the steps read as applied / next / scheduled.
+    scheduledRollout: [
+      { date: atDay(-3), targeting: [{ name: "French market", percentage: { enabled: 50, disabled: 50 } }] },
+      { date: atDay(2), defaultRule: { percentage: { enabled: 20, disabled: 80 } } },
+      {
+        date: atDay(9),
+        defaultRule: { percentage: { enabled: 100, disabled: 0 } },
+        targeting: [{ name: "French market", percentage: { enabled: 100, disabled: 0 } }],
+      },
+    ],
   },
   ...stamp,
 };
@@ -286,6 +299,7 @@ export const FLAG_VERSIONS: FlagVersion[] = [
   version(2, "2026-10-22T10:30:00Z", "feat(flags): beta testers get the new checkout", {
     ...FLAG.payload,
     targeting: FLAG.payload!.targeting!.slice(0, 1),
+    scheduledRollout: undefined,
     metadata: undefined,
     trackEvents: false,
   }),

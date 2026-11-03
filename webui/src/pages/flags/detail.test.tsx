@@ -62,7 +62,9 @@ vi.mock("@/lib/clipboard", () => ({
 }));
 
 // Keep the heavy editor internals out of these page-level tests.
-vi.mock("@/components/flags/flag-form", () => ({
+vi.mock("@/components/flags/flag-form", async () => ({
+  ...(await vi.importActual("@/components/flags/flag-form-schedule")),
+  ...(await vi.importActual("@/components/flags/flag-form-hydration")),
   useFlagForm: () => ({
     isDirty: false,
     valid: true,
@@ -71,6 +73,8 @@ vi.mock("@/components/flags/flag-form", () => ({
     setRules: vi.fn(),
     defaultOutcome: {},
     setDefaultOutcome: vi.fn(),
+    schedule: [],
+    setSchedule: vi.fn(),
     type: "boolean",
     variations: [],
     setVariations: vi.fn(),
@@ -99,6 +103,7 @@ vi.mock("@/components/flags/flag-form", () => ({
     </div>
   ),
   RulesEditor: () => <div data-testid="rules-editor" />,
+  ScheduleEditor: () => <div data-testid="schedule-editor" />,
   VariationsEditor: () => <div data-testid="variations-editor" />,
   TagInput: () => <div data-testid="tag-input" />,
   RESERVED_META_KEYS: new Set(["owner", "description", "flagType", "tags"]),
@@ -402,6 +407,44 @@ describe("FlagDetailPage targeting tab", () => {
     renderPage();
     const tab = screen.getByRole("button", { name: /Targeting/ });
     expect(within(tab).queryByText("0")).not.toBeInTheDocument();
+  });
+});
+
+describe("FlagDetailPage schedule tab", () => {
+  const withSchedule = () => {
+    const flag = makeFlag(false);
+    (flag.payload as Record<string, unknown>).scheduledRollout = [
+      { date: "2999-01-01T00:00:00Z", disable: true },
+      { date: "2999-02-01T00:00:00Z", defaultRule: { variation: "on" } },
+    ];
+    wireData(flag);
+  };
+  const openSchedule = (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(screen.getByRole("button", { name: /^Schedule/ }));
+
+  it("shows a step-count badge when steps exist", () => {
+    withSchedule();
+    renderPage();
+    const tab = screen.getByRole("button", { name: /^Schedule/ });
+    expect(within(tab).getByText("2")).toBeInTheDocument();
+  });
+
+  it("shows the schedule editor to editors", async () => {
+    h.perms = { canEdit: true, role: "editor", admin: true };
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await openSchedule(user);
+    expect(screen.getByTestId("schedule-editor")).toBeInTheDocument();
+  });
+
+  it("shows the read-only schedule to viewers", async () => {
+    withSchedule();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await openSchedule(user);
+    expect(screen.queryByTestId("schedule-editor")).not.toBeInTheDocument();
+    expect(screen.getByText("next")).toBeInTheDocument();
+    expect(screen.getByText("scheduled")).toBeInTheDocument();
   });
 });
 

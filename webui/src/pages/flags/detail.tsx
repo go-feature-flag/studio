@@ -3,6 +3,7 @@ import { useCustom, useCustomMutation, useTranslate } from "@refinedev/core";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import {
+  CalendarClockIcon,
   CodeIcon,
   CrosshairIcon,
   FlaskConicalIcon,
@@ -55,6 +56,7 @@ import {
   Field,
   RESERVED_META_KEYS,
   RulesEditor,
+  ScheduleEditor,
   TagInput,
   VariationsEditor,
   useFlagForm,
@@ -67,6 +69,7 @@ import { FlagCodeSampleTab } from "@/pages/flags/flag-code-sample-tab";
 import {
   DefaultRuleCard,
   FlagsetLink,
+  ScheduleCard,
   SettingsCard,
   TargetingCard,
   VariationsCard,
@@ -90,6 +93,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 
 type SectionKey =
   | "targeting"
+  | "schedule"
   | "variations"
   | "metadata"
   | "settings"
@@ -173,6 +177,9 @@ export function FlagDetailPage() {
   const rulesCount = Array.isArray(payload?.targeting)
     ? payload.targeting.length
     : 0;
+  const scheduledSteps = Array.isArray(payload?.scheduledRollout)
+    ? payload.scheduledRollout
+    : [];
   // Count only custom metadata keys (owner/description live in the Settings tab).
   const metadataCount = payload?.metadata
     ? Object.keys(payload.metadata).filter((k) => !RESERVED_META_KEYS.has(k))
@@ -228,6 +235,12 @@ export function FlagDetailPage() {
       label: t("flag.detail.tabs.targeting"),
       icon: <CrosshairIcon className="h-4 w-4" />,
       badge: rulesCount || undefined,
+    },
+    {
+      key: "schedule",
+      label: t("flag.detail.tabs.schedule"),
+      icon: <CalendarClockIcon className="h-4 w-4" />,
+      badge: scheduledSteps.length || undefined,
     },
     {
       key: "variations",
@@ -472,6 +485,24 @@ export function FlagDetailPage() {
                           names={names}
                         />
                       </>
+                    )}
+                  </div>
+                )}
+
+                {section === "schedule" && (
+                  <div className="flex flex-col gap-4">
+                    {canEdit ? (
+                      <ScheduleEditor
+                        t={t}
+                        variationNames={form.variationNames}
+                        rules={form.rules}
+                        defaultOutcome={form.defaultOutcome}
+                        schedule={form.schedule}
+                        setSchedule={form.setSchedule}
+                        flagOff={flag.disabled}
+                      />
+                    ) : (
+                      <ScheduleCard t={t} payload={payload} names={names} />
                     )}
                   </div>
                 )}

@@ -363,6 +363,41 @@ func TestValidateFlagPayload(t *testing.T) {
 			field: "payload.scheduledRollout[1]", msg: "third does not exist",
 		},
 		{
+			name: "scheduled step edits a rule added by an earlier step",
+			dto: coredto.DTO{
+				Variations: &twoVars, DefaultRule: defaultRule,
+				Scheduled: &[]flag.ScheduledStep{
+					step(day(1), flag.InternalFlag{Rules: &[]flag.Rule{
+						{Name: new("beta"), Query: new(`beta eq true`), VariationResult: new("on")},
+					}}),
+					step(day(2), flag.InternalFlag{Rules: &[]flag.Rule{{Name: new("beta"), VariationResult: new("off")}}}),
+				},
+			},
+		},
+		{
+			name: "scheduled steps apply oldest first whatever their declared order",
+			dto: coredto.DTO{
+				Variations: &twoVars, DefaultRule: defaultRule,
+				Scheduled: &[]flag.ScheduledStep{
+					step(day(2), flag.InternalFlag{Rules: &[]flag.Rule{{Name: new("beta"), VariationResult: new("off")}}}),
+					step(day(1), flag.InternalFlag{Rules: &[]flag.Rule{
+						{Name: new("beta"), Query: new(`beta eq true`), VariationResult: new("on")},
+					}}),
+				},
+			},
+		},
+		{
+			name: "scheduled step changes trackEvents",
+			dto:  scheduled(defaultRule, step(day(1), flag.InternalFlag{TrackEvents: new(false)})),
+		},
+		{
+			name: "scheduled step edits a rule no earlier step added",
+			dto: scheduled(defaultRule,
+				step(day(2), flag.InternalFlag{Rules: &[]flag.Rule{{Name: new("beta"), VariationResult: new("off")}}}),
+			),
+			field: "payload.scheduledRollout[0].targeting[0].query", msg: "query is required",
+		},
+		{
 			name: "scheduled step adds a third boolean variation",
 			dto: scheduled(defaultRule, step(day(1), flag.InternalFlag{
 				Variations: &map[string]*any{"maybe": any3(true)},
@@ -815,4 +850,24 @@ func TestValidateFlagTags(t *testing.T) {
 			assert.Equal(t, tt.wantErr, len(errs) > 0, "errors: %+v", errs)
 		})
 	}
+}
+
+// FuzzValidateFlagPayload: any parsable payload, scheduled steps included,
+// validates without panicking.
+func FuzzValidateFlagPayload(f *testing.F) {
+	for _, seed := range []string{
+		`{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"}}`,
+		`{"variations":{"on":true,"off":false},"defaultRule":{"variation":"on"},"scheduledRollout":[{"date":"2026-01-02T00:00:00Z","disable":true},{"date":"2026-01-01T00:00:00Z","targeting":[{"name":"r","query":"a eq 1","variation":"off"}]}]}`,
+		`{"variations":{"on":true,"off":false},"defaultRule":{"percentage":{"on":50,"off":50}},"scheduledRollout":[{"defaultRule":{"percentage":{"on":-1}}},{"date":"2026-01-01T00:00:00Z"}]}`,
+		`{"scheduledRollout":[{"date":"2026-01-01T00:00:00Z","variations":{"x":1}}]}`,
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(_ *testing.T, raw string) {
+		p, err := ParseFlagPayload(json.RawMessage(raw))
+		if err != nil {
+			return
+		}
+		_ = ValidateFlagPayload(p)
+	})
 }

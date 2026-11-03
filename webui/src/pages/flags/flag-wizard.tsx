@@ -206,6 +206,7 @@ export function FlagWizard({
       },
       customMetadata: {},
       customMetaValid: true,
+      schedule: [],
     });
 
   const onSubmit = () => {

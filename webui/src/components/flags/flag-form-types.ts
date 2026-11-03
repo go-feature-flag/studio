@@ -4,7 +4,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { useTranslate } from "@refinedev/core";
 import type { RuleGroupType } from "react-querybuilder";
-import type { FlagType } from "@/types/api";
+import type { FlagRule, FlagScheduledStep, FlagType } from "@/types/api";
 
 export type Tr = ReturnType<typeof useTranslate>;
 
@@ -32,11 +32,31 @@ export type Rule = {
   outcome: Outcome;
 };
 
+// A scheduled step changes the flag at a date. Rule changes point at a rule by
+// its form id so a rename keeps them attached; the name is written on save.
+export type FlagStateChange = "unchanged" | "enable" | "disable";
+export type ScheduleStep = {
+  id: number;
+  date: string; // local datetime-local string (YYYY-MM-DDTHH:mm)
+  flagState: FlagStateChange;
+  defaultOutcome?: Outcome;
+  rules: { ruleId: number; outcome: Outcome }[];
+  kept?: KeptStep;
+};
+
+// KeptStep is the part of a stored step the editor doesn't show, saved back as loaded.
+export type KeptStep = {
+  fields: Omit<FlagScheduledStep, "date" | "disable" | "defaultRule" | "targeting">;
+  defaultRule?: FlagRule;
+  targeting: { ruleId?: number; rule: FlagRule }[];
+};
+
 export type FlagFormState = {
   type: FlagType;
   variations: Variation[];
   rules: Rule[];
   defaultOutcome: Outcome;
+  schedule: ScheduleStep[];
   // Whether evaluation events for this flag are tracked/exported. GO Feature Flag
   // defaults this to true when the field is omitted from the payload.
   trackEvents: boolean;
@@ -53,6 +73,7 @@ export type UseFlagForm = {
   variations: Variation[];
   rules: Rule[];
   defaultOutcome: Outcome;
+  schedule: ScheduleStep[];
   metadata: Record<string, unknown>;
   customMetadata: Record<string, unknown>;
   trackEvents: boolean;
@@ -63,6 +84,7 @@ export type UseFlagForm = {
   setVariations: Dispatch<SetStateAction<Variation[]>>;
   setRules: Dispatch<SetStateAction<Rule[]>>;
   setDefaultOutcome: (o: Outcome) => void;
+  setSchedule: Dispatch<SetStateAction<ScheduleStep[]>>;
   setTrackEvents: (v: boolean) => void;
   setDescription: (v: string) => void;
   setOwner: (v: string) => void;

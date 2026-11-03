@@ -3,11 +3,14 @@
 // settings cards. Extracted from detail.tsx; these are presentational and take
 // all data via props.
 
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
+  CalendarClockIcon,
   RocketIcon,
   SettingsIcon,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -25,7 +28,16 @@ import {
   ruleOutcome,
   type RuleOutcome,
 } from "@/components/flags/payload";
-import { RESERVED_META_KEYS, type Tr } from "@/components/flags/flag-form";
+import {
+  RESERVED_META_KEYS,
+  STEP_STATUS_VARIANT,
+  hydrateForm,
+  keepsChanges,
+  stepStatuses,
+  stepsInDateOrder,
+  type Tr,
+} from "@/components/flags/flag-form";
+import { formatExactDateTime } from "@/lib/relative-time";
 import type { Flag, FlagRule } from "@/types/api";
 import { CodeChip } from "@/components/ui/code-chip";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -312,5 +324,81 @@ export function SettingsCard({
         </dl>
       </CardContent>
     </Card>
+  );
+}
+
+export function ScheduleCard({
+  t,
+  payload,
+  names,
+}: {
+  t: Tr;
+  payload: Flag["payload"];
+  names: string[];
+}) {
+  const sorted = stepsInDateOrder(payload?.scheduledRollout ?? []);
+  const more = hydrateForm(payload).schedule.map(keepsChanges);
+  const statuses = stepStatuses(sorted.map((s) => s.date));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">{t("flag.detail.schedule.title")}</CardTitle>
+        <CardDescription>{t("flag.detail.schedule.subtitle")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {sorted.length === 0 ? (
+          <EmptyState variant="inline">{t("flag.detail.schedule.empty")}</EmptyState>
+        ) : (
+          <ol className="flex flex-col gap-3">
+            {sorted.map((s, i) => (
+              <li key={i} className="flex flex-col gap-2 rounded-md border p-3">
+                <div className="flex items-center gap-2">
+                  <CalendarClockIcon className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-mono text-xs">
+                    {s.date ? formatExactDateTime(s.date) : "—"}
+                  </span>
+                  <Badge variant={STEP_STATUS_VARIANT[statuses[i]]}>
+                    {t(`flag.detail.schedule.status.${statuses[i]}`)}
+                  </Badge>
+                </div>
+                {s.disable !== undefined && (
+                  <StepLine label={t("flag.detail.schedule.flagState")}>
+                    <span className="text-xs">
+                      {s.disable
+                        ? t("flag.detail.schedule.state.disable")
+                        : t("flag.detail.schedule.state.enable")}
+                    </span>
+                  </StepLine>
+                )}
+                {s.disable !== true && s.defaultRule && (
+                  <StepLine label={t("flag.wizard.defaultRule")}>
+                    <OutcomeView t={t} outcome={ruleOutcome(s.defaultRule)} names={names} />
+                  </StepLine>
+                )}
+                {s.disable !== true && (s.targeting ?? []).map((r, j) => (
+                  <StepLine key={j} label={r.name ?? ""}>
+                    <OutcomeView t={t} outcome={ruleOutcome(r)} names={names} />
+                  </StepLine>
+                ))}
+                {more[i] && (
+                  <p className="text-2xs text-muted-foreground">
+                    {t("flag.detail.schedule.moreChanges")}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StepLine({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[180px_1fr] items-start gap-3">
+      <span className="truncate font-mono text-xs text-muted-foreground">{label}</span>
+      {children}
+    </div>
   );
 }

@@ -141,6 +141,13 @@ export interface FlagPayload {
   metadata?: Record<string, unknown>;
   trackEvents?: boolean;
   disable?: boolean;
+  scheduledRollout?: FlagScheduledStep[];
+}
+
+// FlagScheduledStep mirrors go-feature-flag's scheduled step: a partial flag
+// merged into the flag from its date on. Rules are matched by name.
+export interface FlagScheduledStep extends Omit<FlagPayload, "scheduledRollout"> {
+  date?: string;
 }
 
 export interface Flag {

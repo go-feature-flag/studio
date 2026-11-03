@@ -792,21 +792,25 @@ func validateProgressiveRollout(field string, pr flag.ProgressiveRollout) Valida
 }
 
 // flagAt returns the flag as GOFF evaluates it at date: every scheduled step
-// dated at or before date merged in, in order. It mirrors core v0.7.1's
-// unexported InternalFlag.applyScheduledRolloutSteps, including merging each
-// step's targeting into the authored rules rather than the previous step's
-// result. Keep it in sync when bumping the core module.
+// dated at or before date merged in, oldest first (a stable sort, so steps on
+// the same date keep their declared order). Each step builds on the previous
+// one. It mirrors core v0.8.0's unexported
+// InternalFlag.applyScheduledRolloutSteps. Keep it in sync when bumping the
+// core module.
 func flagAt(f flag.InternalFlag, date time.Time) flag.InternalFlag {
 	at := cloneFlag(f)
-	for _, step := range *f.Scheduled {
-		if step.Date == nil || step.Date.After(date) {
-			continue
-		}
-		// Merge into a fresh copy: MergeSetOfRules mutates the rules it is given.
-		authored := cloneFlag(f)
-		at.Rules = flag.MergeSetOfRules(authored.GetRules(), step.GetRules())
+	// Steps from a fresh copy: merging writes into percentage maps it is given.
+	due := slices.DeleteFunc(*cloneFlag(f).Scheduled, func(s flag.ScheduledStep) bool {
+		return s.Date == nil || s.Date.After(date)
+	})
+	slices.SortStableFunc(due, func(a, b flag.ScheduledStep) int { return a.Date.Compare(*b.Date) })
+	for _, step := range due {
+		at.Rules = flag.MergeSetOfRules(at.GetRules(), step.GetRules())
 		if step.Disable != nil {
 			at.Disable = step.Disable
+		}
+		if step.TrackEvents != nil {
+			at.TrackEvents = step.TrackEvents
 		}
 		if step.DefaultRule != nil {
 			at.DefaultRule.MergeRules(*step.DefaultRule)

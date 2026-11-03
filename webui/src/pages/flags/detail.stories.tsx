@@ -27,6 +27,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Targeting: Story = {};
+export const Schedule: Story = { play: openSection(/^Schedule/) };
 export const Variations: Story = { play: openSection(/^Variations/) };
 export const Metadata: Story = { play: openSection(/^Metadata/) };
 export const Settings: Story = { play: openSection(/^Settings/) };
@@ -45,6 +46,10 @@ export const CodeSample: Story = { play: openSection(/^Code sample/) };
 // Viewers get read-only cards instead of editors, and no Revert buttons.
 export const ViewerTargeting: Story = {
   parameters: { identity: IDENTITIES.viewer },
+};
+export const ViewerSchedule: Story = {
+  parameters: { identity: IDENTITIES.viewer },
+  play: openSection(/^Schedule/),
 };
 export const ViewerSettings: Story = {
   parameters: { identity: IDENTITIES.viewer },
