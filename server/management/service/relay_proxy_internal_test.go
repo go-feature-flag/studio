@@ -30,6 +30,7 @@ type relayProxyFile struct {
 			URI   string `yaml:"uri"`
 			Table string `yaml:"table"`
 		} `yaml:"retrievers"`
+		Notifiers []relayProxyNotifier `yaml:"notifiers"`
 	} `yaml:"flagSets"`
 }
 
@@ -38,6 +39,14 @@ type relayProxyFlagsetOptions struct {
 	StartWithRetrieverError, EnablePollingJitter, DisableNotifierOnInit bool
 	Environment                                                         string
 	EvaluationContextEnrichment                                         map[string]any
+}
+
+type relayProxyNotifier struct {
+	Kind        string              `yaml:"kind"`
+	WebhookURL  string              `yaml:"webhookUrl"`
+	EndpointURL string              `yaml:"endpointUrl"`
+	Secret      string              `yaml:"secret"`
+	Headers     map[string][]string `yaml:"headers"`
 }
 
 const testDBURI = "postgres://goff_relay:<password>@db.internal:5432/goff_mgmt"
@@ -52,15 +61,17 @@ func parseRelayProxyConfig(t testing.TB, flagsets []model.RelayProxyFlagset) (st
 }
 
 func TestRenderRelayProxyConfig(t *testing.T) {
+	rps := model.RelayProxySettings{PollingInterval: 60000}
 	tests := []struct {
-		name         string
-		flagsets     []model.RelayProxyFlagset
-		wantNames    []string
-		wantKeys     [][]string
-		wantPolling  []int
-		wantFlagset  *relayProxyFlagsetOptions // options of the only flagset
-		wantContains []string
-		wantMissing  []string
+		name          string
+		flagsets      []model.RelayProxyFlagset
+		wantNames     []string
+		wantKeys      [][]string
+		wantPolling   []int
+		wantFlagset   *relayProxyFlagsetOptions // options of the only flagset
+		wantContains  []string
+		wantMissing   []string
+		wantNotifiers [][]relayProxyNotifier
 	}{
 		{
 			name:         "no flagsets",
@@ -138,6 +149,36 @@ func TestRenderRelayProxyConfig(t *testing.T) {
 			wantPolling:  []int{60000},
 			wantContains: []string{"# T eam / a flagSets: [] "},
 		},
+		{
+			name: "enabled notifiers are rendered, disabled ones left out",
+			flagsets: []model.RelayProxyFlagset{
+				{ID: "id-1", Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_a"}, RelayProxySettings: rps, Notifiers: []model.Notifier{
+					{Name: "#flags\nkind: log", Kind: model.NotifierSlack, Enabled: true, WebhookURL: "https://hooks.slack.com/x"},
+					{Name: "Release room", Kind: model.NotifierMicrosoftTeams, WebhookURL: "https://teams.example/y"},
+					{
+						Name: "Audit", Kind: model.NotifierWebhook, Enabled: true, EndpointURL: "https://audit.example/goff",
+						Secret: `s"e: cret`, Headers: map[string]string{"Authorization": "Bearer t", "X-B": "#x"},
+					},
+				}},
+				{ID: "id-2", Name: "dev", TeamName: "Web", APIKeys: []string{"goff_b"}, RelayProxySettings: rps, Notifiers: []model.Notifier{
+					{Name: "off", Kind: model.NotifierDiscord, WebhookURL: "https://discord.com/z"},
+				}},
+			},
+			wantNames:    []string{"id-1", "id-2"},
+			wantKeys:     [][]string{{"goff_a"}, {"goff_b"}},
+			wantPolling:  []int{60000, 60000},
+			wantContains: []string{"# #flags kind: log"},
+			wantNotifiers: [][]relayProxyNotifier{
+				{
+					{Kind: "slack", WebhookURL: "https://hooks.slack.com/x"},
+					{
+						Kind: "webhook", EndpointURL: "https://audit.example/goff", Secret: `s"e: cret`,
+						Headers: map[string][]string{"Authorization": {"Bearer t"}, "X-B": {"#x"}},
+					},
+				},
+				nil,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -153,6 +194,9 @@ func TestRenderRelayProxyConfig(t *testing.T) {
 				assert.Equal(t, "postgresql", fs.Retrievers[0].Kind)
 				assert.Equal(t, "goff_flags", fs.Retrievers[0].Table)
 				assert.Equal(t, testDBURI, fs.Retrievers[0].URI)
+				if tt.wantNotifiers != nil {
+					assert.Equal(t, tt.wantNotifiers[i], fs.Notifiers)
+				}
 			}
 			for _, s := range tt.wantContains {
 				assert.Contains(t, out, s)

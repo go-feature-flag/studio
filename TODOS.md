@@ -34,6 +34,7 @@ _Nothing open._
     - evaluation telemetry ("no evaluations in 14 days")
     - pausing a rollout
 
+- [ ] **[Notifiers] Send a test message from the notifier dialog.** The design has a "Send test message" button, left out because it needs `POST /flagsets/:id/notifiers/test` making outbound requests from Studio to user-given URLs. Add it with SSRF guards (block private and link-local addresses, short timeout, no redirects) and reuse the relay proxy's payload shape.
 - [ ] **[Roles] Rename `User.Role()`.** It returns a `CompanyRole`, while `Role` is also the name of the team role type, so callers can mix the two up. Something like `CompanyRoleOrEmpty()` is clearer.
 - [ ] **[Roles] Fill two test gaps.** No `AtLeast` test checks that an unknown role (e.g. `Role("owner").AtLeast(RoleViewer)`) is denied, for team or company roles. `TestNewMeResponse` doesn't cover a user with `CompanyID` set but `CompanyRole` nil, which would return `company.role: ""`; the `users_company_role_pair` CHECK rules that state out in the DB, but the Go side has no test for it.
 - [ ] **[Handlers] Make the `params` test helper reject an odd argument count.** A trailing key without a value is dropped silently, so a test can pass with an empty path param.

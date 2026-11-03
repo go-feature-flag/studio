@@ -9,6 +9,7 @@ import {
 import { Link, Navigate, useParams } from "react-router";
 import {
   ArrowUpRightIcon,
+  BellIcon,
   FlagIcon,
   KeyRoundIcon,
   SaveIcon,
@@ -27,7 +28,9 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiKeysTab } from "./settings-api-keys-tab";
 import { ContextTab } from "./settings-context-tab";
+import { NotifiersTab } from "./settings-notifiers-tab";
 import { SettingsTab } from "./settings-testing-context-tab";
+import { Setting } from "./setting";
 import { DangerTab } from "./settings-danger-tab";
 import { DEFAULT_TESTING_CONTEXT } from "@/components/flags/evaluate-panel";
 import { canEditTeam, effectiveTeamRole } from "@/providers/access-control";
@@ -38,7 +41,7 @@ import type { Flagset } from "@/types/api";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageBreadcrumb } from "@/components/ui/page-header";
 
-type TabKey = "settings" | "keys" | "context";
+type TabKey = "settings" | "keys" | "context" | "notifiers";
 
 type Draft = {
   name: string;
@@ -121,18 +124,21 @@ export function FlagsetSettingsPage() {
   // All flagset edits (general, context enrichment, API keys, delete) are
   // admin-only.
   const canManage = !!teamId && canEditTeam(teamId); // admin / super-admin
-  // Listing API keys needs editor+; viewers don't get the Keys tab.
-  const canReadKeys =
+  // API keys and notifiers are secrets: listing them needs editor+, so viewers
+  // don't get those tabs.
+  const canReadSecrets =
     !!teamId && (canEditTeam(teamId) || effectiveTeamRole(teamId) === "editor");
-  const shownTab = tab === "keys" && !canReadKeys ? "settings" : tab;
+  const secretTabs: TabKey[] = ["keys", "notifiers"];
+  const shownTab = secretTabs.includes(tab) && !canReadSecrets ? "settings" : tab;
 
   const allTabs: { key: TabKey; label: string; icon: ReactNode }[] =
     [
       { key: "settings", label: t("flagset.settings.settings"), icon: <SettingsIcon className="h-4 w-4" /> },
       { key: "keys", label: t("flagset.settings.apiKeys"), icon: <KeyRoundIcon className="h-4 w-4" /> },
       { key: "context", label: t("flagset.settings.context"), icon: <ZapIcon className="h-4 w-4" /> },
+      { key: "notifiers", label: t("flagset.settings.notifiers.title"), icon: <BellIcon className="h-4 w-4" /> },
     ];
-  const tabs = allTabs.filter((tb) => tb.key !== "keys" || canReadKeys);
+  const tabs = allTabs.filter((tb) => !secretTabs.includes(tb.key) || canReadSecrets);
 
   const clean = flagset ? seed(flagset) : null;
   const current = draft ?? clean;
@@ -267,6 +273,8 @@ export function FlagsetSettingsPage() {
             ) : (
               <>
                 {shownTab === "keys" && <ApiKeysTab flagsetId={id} canManage={canManage} />}
+                {/* Notifiers save on their own (PUT of the whole list), outside the save bar. */}
+                {shownTab === "notifiers" && <NotifiersTab flagsetId={id} canManage={canManage} />}
                 {/* Kept mounted while hidden so in-progress enrichment rows
                     (incl. invalid ones the draft can't hold) survive tab switches. */}
                 <div className={cn(shownTab !== "context" && "hidden")}>
@@ -437,42 +445,3 @@ export function FlagsetSettingsPage() {
 }
 
 FlagsetSettingsPage.displayName = "FlagsetSettingsPage";
-
-// A labelled setting with its description above the control (or beside it,
-// for switches); the control references the hint via `${id}-hint`.
-function Setting({
-  id,
-  label,
-  hint,
-  inline,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint: ReactNode;
-  inline?: boolean;
-  children: ReactNode;
-}) {
-  const text = (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={id}>{label}</Label>
-      <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-        {hint}
-      </p>
-    </div>
-  );
-  if (inline) {
-    return (
-      <div className="flex items-start justify-between gap-4">
-        {text}
-        {children}
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {text}
-      {children}
-    </div>
-  );
-}

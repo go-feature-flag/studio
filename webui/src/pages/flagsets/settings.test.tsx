@@ -39,7 +39,7 @@ vi.mock("@/components/refine-ui/views/list-view", () => ({
   ListView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-// Keys and danger zone have their own tests and their own actions; stub them.
+// Keys, notifiers and danger zone have their own tests and their own actions; stub them.
 // The editable sections stay real: the page owns their draft and save bar.
 type TabProps = { canManage?: boolean };
 const { stub } = vi.hoisted(() => ({
@@ -48,6 +48,7 @@ const { stub } = vi.hoisted(() => ({
   ),
 }));
 vi.mock("./settings-api-keys-tab", () => ({ ApiKeysTab: stub("keys") }));
+vi.mock("./settings-notifiers-tab", () => ({ NotifiersTab: stub("notifiers") }));
 vi.mock("./settings-danger-tab", () => ({ DangerTab: stub("danger") }));
 
 import { FlagsetSettingsPage } from "./settings";
@@ -122,7 +123,7 @@ describe("FlagsetSettingsPage", () => {
   const roles = [
     { name: "admin lands on settings and can write", canEdit: true, role: "admin", wantDisabled: false, wantKeysTab: true },
     { name: "editor lands on settings, read-only", canEdit: false, role: "editor", wantDisabled: true, wantKeysTab: true },
-    { name: "viewer lands on settings and has no keys tab", canEdit: false, role: "viewer", wantDisabled: true, wantKeysTab: false },
+    { name: "viewer lands on settings and has no keys or notifiers tab", canEdit: false, role: "viewer", wantDisabled: true, wantKeysTab: false },
   ];
   for (const tt of roles) {
     it(tt.name, () => {
@@ -132,6 +133,7 @@ describe("FlagsetSettingsPage", () => {
       expect(screen.getByRole("heading", { name: "prod" })).toBeInTheDocument();
       expect(nameInput().disabled).toBe(tt.wantDisabled);
       expect(screen.queryByRole("button", { name: "flagset.settings.apiKeys" }) !== null).toBe(tt.wantKeysTab);
+      expect(screen.queryByRole("button", { name: "flagset.settings.notifiers.title" }) !== null).toBe(tt.wantKeysTab);
     });
   }
 
@@ -140,6 +142,13 @@ describe("FlagsetSettingsPage", () => {
     openTab("flagset.settings.apiKeys");
     expect(props("keys")).toEqual({ canManage: true });
     expect(screen.queryByLabelText("common.name")).toBeNull();
+  });
+
+  it("switches to the notifiers tab, which saves on its own", () => {
+    renderAt();
+    openTab("flagset.settings.notifiers.title");
+    expect(props("notifiers")).toEqual({ canManage: true });
+    expect(saveBtn()).toBeNull();
   });
 
   it("shows no save bar until something changes, and none after editing back", () => {

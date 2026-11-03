@@ -136,6 +136,11 @@ var routeCases = []struct {
 	{"POST", "/api/v1/flagsets/{flagset}/api-keys", editor, `{"label":"k2"}`, 403},
 	{"DELETE", "/api/v1/flagsets/{flagset}/api-keys/{key}", teamAdmin, "", 204},
 	{"DELETE", "/api/v1/flagsets/{flagset}/api-keys/{key}", editor, "", 403},
+	{"GET", "/api/v1/flagsets/{flagset}/notifiers", editor, "", 200},
+	{"GET", "/api/v1/flagsets/{flagset}/notifiers", viewer, "", 403}, // webhook URLs are secrets
+	{"PUT", "/api/v1/flagsets/{flagset}/notifiers", teamAdmin, `{"notifiers":[{"name":"n","kind":"discord","enabled":true,"webhookUrl":"https://discord.com/api/webhooks/1"}]}`, 200}, //nolint:lll // request body
+	{"PUT", "/api/v1/flagsets/{flagset}/notifiers", editor, `{"notifiers":[]}`, 403},
+	{"PUT", "/api/v1/flagsets/{flagset}/notifiers", teamAdmin, `{"notifiers":[{"name":"n","kind":"log"}]}`, 400},
 
 	// Flags.
 	{"GET", "/api/v1/teams/{team}/flags", viewer, "", 200},

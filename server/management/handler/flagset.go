@@ -188,6 +188,51 @@ func (h *FlagsetHandler) DeleteAPIKey(c *echo.Context) error {
 	return noContent(c)
 }
 
+// ListNotifiers godoc
+// @Summary  List the relay proxy notifiers of a flagset (team editor: they hold webhook URLs and secrets)
+// @Tags     flagsets
+// @Produce  json
+// @Param    id path string true "flagset id"
+// @Success  200 {object} model.APIResponse{data=[]model.Notifier}
+// @Failure  401 {object} model.APIResponse "no valid session"
+// @Failure  403 {object} model.APIResponse
+// @Failure  404 {object} model.APIResponse "not found, or a malformed id"
+// @Router   /flagsets/{id}/notifiers [get]
+func (h *FlagsetHandler) ListNotifiers(c *echo.Context) error {
+	ns, err := h.svc.ListNotifiers(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return writeServiceError(c, err, "failed to list notifiers")
+	}
+	return ok(c, ns)
+}
+
+// ReplaceNotifiers godoc
+// @Summary  Replace the relay proxy notifiers of a flagset (team admin)
+// @Tags     flagsets
+// @Accept   json
+// @Produce  json
+// @Param    id   path string                        true "flagset id"
+// @Param    body body model.ReplaceNotifiersRequest  true "the whole notifier list"
+// @Success  200 {object} model.APIResponse{data=[]model.Notifier}
+// @Failure  400 {object} model.APIResponse
+// @Failure  401 {object} model.APIResponse "no valid session"
+// @Failure  403 {object} model.APIResponse
+// @Failure  404 {object} model.APIResponse
+// @Failure  413 {object} model.APIResponse "body larger than 256 KiB"
+// @Router   /flagsets/{id}/notifiers [put]
+func (h *FlagsetHandler) ReplaceNotifiers(c *echo.Context) error {
+	claims := middleware.MustClaims(c)
+	var req model.ReplaceNotifiersRequest
+	if err := c.Bind(&req); err != nil {
+		return bindError(c, err)
+	}
+	ns, err := h.svc.ReplaceNotifiers(c.Request().Context(), claims.UserID, c.Param("id"), req.Notifiers)
+	if err != nil {
+		return writeServiceError(c, err, "failed to save notifiers")
+	}
+	return ok(c, ns)
+}
+
 // RelayProxyConfig godoc
 // @Summary  Relay proxy configuration (goff-proxy.yaml) serving every flagset of a company (company admin)
 // @Tags     companies

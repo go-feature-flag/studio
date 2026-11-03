@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -77,8 +78,11 @@ func relayProxyDBURI(host string, port uint16, database string) string {
 
 func renderRelayProxyConfig(flagsets []model.RelayProxyFlagset, dbURI string) (string, error) {
 	served := false
-	for _, fs := range flagsets {
+	for i, fs := range flagsets {
 		served = served || len(fs.APIKeys) > 0
+		flagsets[i].Notifiers = slices.DeleteFunc(slices.Clone(fs.Notifiers), func(n model.Notifier) bool {
+			return !n.Enabled
+		})
 	}
 	var b strings.Builder
 	err := relayProxyTemplate.Execute(&b, struct {

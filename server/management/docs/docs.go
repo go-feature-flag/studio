@@ -2139,6 +2139,150 @@ const docTemplate = `{
                 }
             }
         },
+        "/flagsets/{id}/notifiers": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "flagsets"
+                ],
+                "summary": "List the relay proxy notifiers of a flagset (team editor: they hold webhook URLs and secrets)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "flagset id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.Notifier"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "not found, or a malformed id",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "flagsets"
+                ],
+                "summary": "Replace the relay proxy notifiers of a flagset (team admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "flagset id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "the whole notifier list",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/model.ReplaceNotifiersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/model.Notifier"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/onboarding/company": {
             "post": {
                 "consumes": [
@@ -3883,6 +4027,61 @@ const docTemplate = `{
                 }
             }
         },
+        "model.Notifier": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpointUrl": {
+                    "type": "string"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "kind": {
+                    "enum": [
+                        "slack",
+                        "discord",
+                        "microsoftteams",
+                        "webhook"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.NotifierKind"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string",
+                    "example": "#feature-flags"
+                },
+                "secret": {
+                    "type": "string"
+                },
+                "webhookUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.NotifierKind": {
+            "type": "string",
+            "enum": [
+                "slack",
+                "discord",
+                "microsoftteams",
+                "webhook"
+            ],
+            "x-enum-varnames": [
+                "NotifierSlack",
+                "NotifierDiscord",
+                "NotifierMicrosoftTeams",
+                "NotifierWebhook"
+            ]
+        },
         "model.PaginatedResponse-model_AuditEntry": {
             "type": "object",
             "properties": {
@@ -3989,6 +4188,17 @@ const docTemplate = `{
                 },
                 "to": {
                     "type": "number"
+                }
+            }
+        },
+        "model.ReplaceNotifiersRequest": {
+            "type": "object",
+            "properties": {
+                "notifiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Notifier"
+                    }
                 }
             }
         },

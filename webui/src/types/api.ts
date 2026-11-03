@@ -92,6 +92,20 @@ export interface FlagsetAPIKey {
   createdAt: string;
 }
 
+export type NotifierKind = "slack" | "discord" | "microsoftteams" | "webhook";
+
+// A relay proxy notifier of a flagset. Chat kinds use webhookUrl; the webhook
+// kind uses endpointUrl, secret and headers.
+export interface Notifier {
+  name: string;
+  kind: NotifierKind;
+  enabled: boolean;
+  webhookUrl?: string;
+  endpointUrl?: string;
+  secret?: string;
+  headers?: Record<string, string>;
+}
+
 export interface CreateAPIKeyRequest {
   label: string;
 }

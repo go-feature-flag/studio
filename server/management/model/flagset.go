@@ -6,8 +6,8 @@ import (
 )
 
 // Flagset groups flags served to relay proxies through its API keys. How a
-// relay proxy retrieves, exports and notifies is configured in the relay proxy
-// itself, not in Studio.
+// relay proxy retrieves and exports is configured in the relay proxy itself;
+// its notifiers come from Studio (see Notifier).
 type Flagset struct {
 	ID          string `db:"id" json:"id"`
 	TeamID      string `db:"team_id" json:"teamId"`
@@ -88,8 +88,8 @@ type CreateAPIKeyRequest struct {
 	Label string `json:"label" validate:"required" example:"relay-proxy-prod"`
 }
 
-// RelayProxyFlagset is a live flagset with its API keys, as needed to write a
-// relay proxy configuration.
+// RelayProxyFlagset is a live flagset with its API keys and notifiers, as
+// needed to write a relay proxy configuration.
 type RelayProxyFlagset struct {
 	ID       string   `db:"id" json:"id"`
 	Name     string   `db:"name" json:"name"`
@@ -97,5 +97,36 @@ type RelayProxyFlagset struct {
 	APIKeys  []string `db:"api_keys" json:"apiKeys"`
 	// EvaluationContextEnrichment is a JSON object, or empty when unset.
 	EvaluationContextEnrichment json.RawMessage `db:"evaluation_context_enrichment" json:"evaluationContextEnrichment,omitempty"` //nolint:lll // struct tags cannot be wrapped
+	Notifiers                   []Notifier      `db:"notifiers" json:"notifiers"`
 	RelayProxySettings
+}
+
+// NotifierKind values are the relay proxy's notifier kinds. Its "log" notifier
+// is not offered: the relay proxy config does not accept it per flagset.
+type NotifierKind string
+
+const (
+	NotifierSlack          NotifierKind = "slack"
+	NotifierDiscord        NotifierKind = "discord"
+	NotifierMicrosoftTeams NotifierKind = "microsoftteams"
+	NotifierWebhook        NotifierKind = "webhook"
+)
+
+// Notifier is a relay proxy notifier of a flagset, called on every flag
+// change. Chat kinds use WebhookURL; the webhook kind uses EndpointURL, Secret
+// and Headers. A disabled notifier is kept but left out of the relay proxy
+// config.
+type Notifier struct {
+	Name        string            `json:"name" example:"#feature-flags"`
+	Kind        NotifierKind      `json:"kind" enums:"slack,discord,microsoftteams,webhook"`
+	Enabled     bool              `json:"enabled"`
+	WebhookURL  string            `json:"webhookUrl,omitempty"`
+	EndpointURL string            `json:"endpointUrl,omitempty"`
+	Secret      string            `json:"secret,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+}
+
+// ReplaceNotifiersRequest sets the whole notifier list of a flagset.
+type ReplaceNotifiersRequest struct {
+	Notifiers []Notifier `json:"notifiers"`
 }

@@ -7,6 +7,7 @@ import type {
   FlagInstance,
   FlagOwner,
   FlagsetAPIKey,
+  Notifier,
   FlagVersion,
   MeResponse,
   PaginatedResponse,
@@ -293,6 +294,19 @@ export const FLAG_VERSIONS: FlagVersion[] = [
     trackEvents: false,
   }),
   version(4, "2026-10-27T14:32:00Z", "chore(flags): track evaluation events", FLAG.payload),
+];
+
+export const NOTIFIERS: Notifier[] = [
+  { name: "#feature-flags", kind: "slack", enabled: true, webhookUrl: "https://hooks.slack.com/services/T024F/B07Q9/x1Y2z3" },
+  {
+    name: "Audit service",
+    kind: "webhook",
+    enabled: true,
+    endpointUrl: "https://audit.internal.example.com/goff",
+    secret: "shh",
+    headers: { Authorization: "Bearer token" },
+  },
+  { name: "Release room", kind: "microsoftteams", enabled: false, webhookUrl: "https://acme.webhook.office.com/x" },
 ];
 
 export const API_KEYS: FlagsetAPIKey[] = [

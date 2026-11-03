@@ -34,6 +34,7 @@ import {
   FLAG_VERSIONS,
   FLAGSETS,
   LOADING,
+  NOTIFIERS,
   paginated,
   TAGS,
   TEAM_MEMBERS,
@@ -68,6 +69,7 @@ const ROUTES: DataRoutes = {
   "/flagsets": FLAGSETS,
   "/flagsets/fs-web": FLAGSETS[0],
   "/flagsets/fs-web/api-keys": API_KEYS,
+  "/flagsets/fs-web/notifiers": NOTIFIERS,
   "/flags/f-checkout": FLAG,
   "/flags/f-checkout/versions": paginated(FLAG_VERSIONS),
 };

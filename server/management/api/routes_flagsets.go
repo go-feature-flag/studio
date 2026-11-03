@@ -25,4 +25,7 @@ func registerFlagsetRoutes(g *echo.Group, h Handlers, s Services) {
 	fs.GET("/api-keys", h.Flagsets.ListAPIKeys, editor)
 	fs.POST("/api-keys", h.Flagsets.CreateAPIKey, admin)
 	fs.DELETE("/api-keys/:keyId", h.Flagsets.DeleteAPIKey, admin)
+	// Notifiers hold webhook URLs and secrets: the same rule as keys.
+	fs.GET("/notifiers", h.Flagsets.ListNotifiers, editor)
+	fs.PUT("/notifiers", h.Flagsets.ReplaceNotifiers, admin)
 }

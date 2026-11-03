@@ -290,6 +290,9 @@ func TestFlagsetRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.ListForRelayProxy(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.GetNotifiers(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.ErrorIs(t, repo.UpdateNotifiers(ctx, id, []model.Notifier{}), context.Canceled)
 }
 
 func TestFlagsetRepoListForRelayProxy(t *testing.T) {
@@ -311,12 +314,17 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 		_, err := repo.InsertAPIKey(ctx, k.flagsetID, "ci", k.key, user.ID)
 		require.NoError(t, err)
 	}
+	notifiers := []model.Notifier{{Name: "n", Kind: model.NotifierDiscord, Enabled: true, WebhookURL: "https://d.example"}}
+	require.NoError(t, repo.UpdateNotifiers(ctx, dev.ID, notifiers))
 	require.NoError(t, repo.SoftDelete(ctx, deleted.ID))
 	_, err := repo.Update(ctx, dev.ID, &model.UpdateFlagsetRequest{
 		PollingInterval: new(5000), Environment: new("development"),
 		EvaluationContextEnrichment: json.RawMessage(`{"env":"dev"}`),
 	})
 	require.NoError(t, err)
+	assert.ErrorIs(t, repo.UpdateNotifiers(ctx, deleted.ID, notifiers), repository.ErrNotFound)
+	_, err = repo.GetNotifiers(ctx, deleted.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 	otherTeam := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Other").ID, "Platform")
 	_ = testutil.SeedFlagset(t, db, otherTeam.ID, "other")
 
@@ -327,14 +335,16 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 	got[2].EvaluationContextEnrichment = nil // jsonb reformats it; compared above
 	defaults := model.RelayProxySettings{PollingInterval: 60000}
 	assert.Equal(t, []model.RelayProxyFlagset{
-		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}, RelayProxySettings: defaults},
+		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}, RelayProxySettings: defaults,
+			Notifiers: []model.Notifier{}},
 		{
 			ID: prod.ID, Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_first", "goff_second"},
-			RelayProxySettings: defaults,
+			RelayProxySettings: defaults, Notifiers: []model.Notifier{},
 		},
 		{
 			ID: dev.ID, Name: "dev", TeamName: "Web", APIKeys: []string{"goff_dev"},
 			RelayProxySettings: model.RelayProxySettings{PollingInterval: 5000, Environment: "development"},
+			Notifiers:          notifiers,
 		},
 	}, got, "live flagsets of this company only, ordered by team then name, keys oldest first")
 

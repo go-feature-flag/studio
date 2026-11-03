@@ -279,7 +279,8 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 	rows, err := r.db.Pool.Query(ctx, `
 		SELECT fs.id, fs.name, t.name AS team_name, fs.evaluation_context_enrichment,
 			`+relayProxyCols+`,
-			COALESCE(array_agg(k.api_key ORDER BY k.created_at, k.id) FILTER (WHERE k.api_key IS NOT NULL), '{}') AS api_keys
+			COALESCE(array_agg(k.api_key ORDER BY k.created_at, k.id) FILTER (WHERE k.api_key IS NOT NULL), '{}') AS api_keys,
+			fs.notifiers
 		FROM flagsets fs
 		JOIN teams t ON t.id = fs.team_id
 		LEFT JOIN flagset_api_keys k ON k.flagset_id = fs.id
@@ -290,6 +291,30 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.RelayProxyFlagset])
+}
+
+// GetNotifiers returns the notifiers of a live flagset.
+func (r *FlagsetRepo) GetNotifiers(ctx context.Context, id string) ([]model.Notifier, error) {
+	ns := []model.Notifier{}
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT notifiers FROM flagsets WHERE id = $1 AND deleted_at IS NULL`, id).Scan(&ns)
+	if isNoRows(err) {
+		return nil, ErrNotFound
+	}
+	return ns, err
+}
+
+// UpdateNotifiers replaces the notifiers of a live flagset.
+func (r *FlagsetRepo) UpdateNotifiers(ctx context.Context, id string, ns []model.Notifier) error {
+	tag, err := r.db.Pool.Exec(ctx, `UPDATE flagsets SET notifiers = $2, updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL`, id, ns)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteAPIKey revokes a key of the given flagset and returns it. Scoping by flagset means a

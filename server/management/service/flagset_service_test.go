@@ -268,3 +268,86 @@ func TestFlagsetServiceRelayProxyConfig(t *testing.T) {
 		assert.ErrorIs(t, err, service.ErrNotFound)
 	})
 }
+
+func TestFlagsetServiceNotifiers(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	svc := newFlagsetService(db)
+	ctx := t.Context()
+	team := seedTeamForFlagset(t, db)
+	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
+	fs, err := svc.Create(ctx, actor.ID, team.ID, &model.CreateFlagsetRequest{Name: "prod"})
+	require.NoError(t, err)
+	_, err = svc.CreateAPIKey(ctx, actor.ID, fs.ID, "relay")
+	require.NoError(t, err)
+	missing := "00000000-0000-0000-0000-000000000000"
+
+	got, err := svc.ListNotifiers(ctx, fs.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got, "a new flagset has no notifiers")
+
+	ns := []model.Notifier{
+		{Name: " #flags ", Kind: model.NotifierSlack, Enabled: true, WebhookURL: "https://hooks.slack.com/x"},
+		{
+			Name: "Audit", Kind: model.NotifierWebhook, EndpointURL: "https://audit.example/goff",
+			Secret: "top-secret", Headers: map[string]string{"Authorization": "Bearer t"},
+		},
+	}
+	tests := []struct {
+		name       string
+		id         string
+		notifiers  []model.Notifier
+		wantErr    error
+		wantFields []string
+		wantAudits int
+	}{
+		{name: "invalid list is rejected", id: fs.ID, notifiers: []model.Notifier{{Name: "x", Kind: "log"}},
+			wantFields: []string{"notifiers[0].kind"}},
+		{name: "missing flagset", id: missing, notifiers: ns, wantErr: service.ErrNotFound},
+		{name: "replace stores and audits", id: fs.ID, notifiers: ns, wantAudits: 1},
+		{name: "same list is a no-op", id: fs.ID, notifiers: ns, wantAudits: 1},
+		{name: "nil clears", id: fs.ID, notifiers: nil, wantAudits: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := svc.ReplaceNotifiers(ctx, actor.ID, tt.id, tt.notifiers)
+			switch {
+			case tt.wantFields != nil:
+				assert.Equal(t, tt.wantFields, validationFields(t, err))
+			case tt.wantErr != nil:
+				assert.ErrorIs(t, err, tt.wantErr)
+			default:
+				require.NoError(t, err)
+				stored, err := svc.ListNotifiers(ctx, tt.id)
+				require.NoError(t, err)
+				if tt.notifiers == nil {
+					assert.Empty(t, stored)
+				} else {
+					assert.Equal(t, "#flags", stored[0].Name, "name is trimmed")
+					assert.Equal(t, ns[1], stored[1])
+				}
+				assert.Equal(t, tt.wantAudits, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetFlagset))
+			}
+		})
+	}
+
+	t.Run("audit and relay proxy config", func(t *testing.T) {
+		_, err := svc.ReplaceNotifiers(ctx, actor.ID, fs.ID, ns)
+		require.NoError(t, err)
+		var after string
+		require.NoError(t, db.Pool.QueryRow(ctx,
+			`SELECT after::text FROM audit_log WHERE target_type = 'flagset' ORDER BY occurred_at DESC, id DESC LIMIT 1`).Scan(&after))
+		assert.Contains(t, after, `"name": "Audit"`)
+		assert.NotContains(t, after, "top-secret", "secrets stay out of the audit log")
+		assert.NotContains(t, after, "audit.example", "URLs stay out of the audit log")
+
+		cfg, err := svc.RelayProxyConfig(ctx, team.CompanyID)
+		require.NoError(t, err)
+		assert.Contains(t, cfg, `webhookUrl: "https://hooks.slack.com/x"`)
+		assert.NotContains(t, cfg, "audit.example", "a disabled notifier is left out")
+	})
+
+	t.Run("list missing flagset", func(t *testing.T) {
+		_, err := svc.ListNotifiers(ctx, missing)
+		assert.ErrorIs(t, err, service.ErrNotFound)
+	})
+}

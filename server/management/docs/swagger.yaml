@@ -481,6 +481,44 @@ definitions:
       user:
         $ref: '#/definitions/model.User'
     type: object
+  model.Notifier:
+    properties:
+      enabled:
+        type: boolean
+      endpointUrl:
+        type: string
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      kind:
+        allOf:
+        - $ref: '#/definitions/model.NotifierKind'
+        enum:
+        - slack
+        - discord
+        - microsoftteams
+        - webhook
+      name:
+        example: '#feature-flags'
+        type: string
+      secret:
+        type: string
+      webhookUrl:
+        type: string
+    type: object
+  model.NotifierKind:
+    enum:
+    - slack
+    - discord
+    - microsoftteams
+    - webhook
+    type: string
+    x-enum-varnames:
+    - NotifierSlack
+    - NotifierDiscord
+    - NotifierMicrosoftTeams
+    - NotifierWebhook
   model.PaginatedResponse-model_AuditEntry:
     properties:
       data:
@@ -551,6 +589,13 @@ definitions:
         type: string
       to:
         type: number
+    type: object
+  model.ReplaceNotifiersRequest:
+    properties:
+      notifiers:
+        items:
+          $ref: '#/definitions/model.Notifier'
+        type: array
     type: object
   model.Role:
     enum:
@@ -2078,6 +2123,96 @@ paths:
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Revoke a flagset API key by id (team admin)
+      tags:
+      - flagsets
+  /flagsets/{id}/notifiers:
+    get:
+      parameters:
+      - description: flagset id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.Notifier'
+                  type: array
+              type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: not found, or a malformed id
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: 'List the relay proxy notifiers of a flagset (team editor: they hold
+        webhook URLs and secrets)'
+      tags:
+      - flagsets
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: flagset id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: the whole notifier list
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/model.ReplaceNotifiersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.APIResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/model.Notifier'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "413":
+          description: body larger than 256 KiB
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Replace the relay proxy notifiers of a flagset (team admin)
       tags:
       - flagsets
   /onboarding/company:

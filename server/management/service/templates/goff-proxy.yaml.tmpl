@@ -34,5 +34,27 @@ flagSets:
       - kind: postgresql
         uri: {{quote $.URI}}
         table: goff_flags
+{{- with .Notifiers}}
+    notifiers:
+{{- range .}}
+      # {{comment .Name}}
+      - kind: {{quote (print .Kind)}}
+{{- if .WebhookURL}}
+        webhookUrl: {{quote .WebhookURL}}
+{{- end}}
+{{- if .EndpointURL}}
+        endpointUrl: {{quote .EndpointURL}}
+{{- end}}
+{{- if .Secret}}
+        secret: {{quote .Secret}}
+{{- end}}
+{{- with .Headers}}
+        headers:
+{{- range $name, $value := .}}
+          {{quote $name}}: [{{quote $value}}]
+{{- end}}
+{{- end}}
+{{- end}}
+{{- end}}
 {{- end}}
 {{- end}}
