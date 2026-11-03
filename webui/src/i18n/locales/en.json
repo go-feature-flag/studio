@@ -54,6 +54,7 @@
     "summaryAttention_one": "{{count}} flag needs attention",
     "summaryAttention_other": "{{count}} flags need attention",
     "jump": "Jump to a flag…",
+    "jumpAll": "Search all flags for “{{q}}”",
     "noTeam": "Pick a team in the sidebar to see its dashboard.",
     "stats": {
       "flags": "Flags",
