@@ -35,6 +35,13 @@ export function canEditTeam(teamId?: string): boolean {
   );
 }
 
+// canWriteTeam gates authoring inside a team (create/edit flags and flagsets):
+// team admins and editors, unlike canEditTeam which is admin-only.
+export function canWriteTeam(teamId?: string | null): boolean {
+  if (!teamId) return false;
+  return canEditTeam(teamId) || effectiveTeamRole(teamId) === "editor";
+}
+
 function canTeamDetail(action: string, teamId?: string): CanReturnType {
   const user = getCachedUser();
   if (!user) {

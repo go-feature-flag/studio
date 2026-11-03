@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { relativeTime, rolloutStatus } from "./rollout-curve";
+import { relativeTime, rolloutPercent, rolloutStatus } from "./rollout-curve";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -19,6 +19,21 @@ describe("rolloutStatus", () => {
     expect(rolloutStatus(start, start, end)).toBe("live");
     expect(rolloutStatus(end, start, end)).toBe("live");
   });
+});
+
+describe("rolloutPercent", () => {
+  const tests = [
+    { name: "before the window serves the initial share", now: 500, want: 10 },
+    { name: "at the start serves the initial share", now: 1_000, want: 10 },
+    { name: "midway interpolates linearly", now: 1_500, want: 55 },
+    { name: "rounds to a whole percent", now: 1_333, want: 40 },
+    { name: "after the window serves the end share", now: 2_500, want: 100 },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      expect(rolloutPercent(tt.now, 1_000, 2_000, 10, 100)).toBe(tt.want);
+    });
+  }
 });
 
 describe("relativeTime", () => {

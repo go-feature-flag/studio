@@ -26,6 +26,14 @@ _Nothing open._
 
 ## P3 — Nice to have or blocked
 
+- [ ] **[Server] Feed the parts of the home dashboard the API can't serve yet.** `webui/src/pages/home/` ships a frontend-only v1 that leaves out several things from the design:
+  - **Summary endpoint.** Totals and stale counts come from the first 200 flags (`?pageSize=200`), so they are wrong for bigger teams. Each running rollout also costs one `GET /flags/:id` to read its dates. Add `GET /teams/:id/dashboard` returning counts, the rollout windows and the number of distinct actors over 7 days (the "by N people" line).
+  - **Stale flags.** The 30-day rule needs a "distribution last changed" timestamp, because `updatedAt` also moves on enable/disable.
+  - **Missing concepts.** There is no data at all for:
+    - retriever sync status per flagset ("Synced / Retrying")
+    - evaluation telemetry ("no evaluations in 14 days")
+    - pausing a rollout
+
 - [ ] **[Roles] Rename `User.Role()`.** It returns a `CompanyRole`, while `Role` is also the name of the team role type, so callers can mix the two up. Something like `CompanyRoleOrEmpty()` is clearer.
 - [ ] **[Roles] Fill two test gaps.** No `AtLeast` test checks that an unknown role (e.g. `Role("owner").AtLeast(RoleViewer)`) is denied, for team or company roles. `TestNewMeResponse` doesn't cover a user with `CompanyID` set but `CompanyRole` nil, which would return `company.role: ""`; the `users_company_role_pair` CHECK rules that state out in the DB, but the Go side has no test for it.
 - [ ] **[Handlers] Make the `params` test helper reject an odd argument count.** A trailing key without a value is dropped silently, so a test can pass with an empty path param.

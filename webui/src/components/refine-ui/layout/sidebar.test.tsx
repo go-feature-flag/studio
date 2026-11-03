@@ -80,9 +80,9 @@ const menuItems = [
   },
 ];
 
-function renderSidebar() {
+function renderSidebar(path = "/") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <SidebarProvider>
         <Sidebar />
       </SidebarProvider>
@@ -172,6 +172,34 @@ describe("Sidebar - Create", () => {
       const link = screen.queryByRole("link", { name: "Create flag" });
       if (tt.want) expect(link).toHaveAttribute("href", "/flags?create=1");
       else expect(link).not.toBeInTheDocument();
+    });
+  }
+});
+
+describe("Sidebar - Home", () => {
+  beforeEach(() => {
+    mockUseMenu.mockReturnValue({ menuItems: [], selectedKey: undefined });
+    mockActive.mockReturnValue({
+      activeCompanyId: null,
+      setActiveCompanyId: vi.fn(),
+      isSuperAdmin: false,
+      source: "none",
+    });
+    mockUser.mockReturnValue({ isSuperAdmin: false });
+    mockCompany.mockReturnValue(null);
+    team.id = null;
+  });
+
+  const tests = [
+    { name: "is selected on the home page", path: "/", selected: true },
+    { name: "is not selected on another page", path: "/flags", selected: false },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      renderSidebar(tt.path);
+      const link = screen.getByRole("link", { name: "Home" });
+      expect(link).toHaveAttribute("href", "/");
+      expect(link.querySelector(".font-semibold") !== null).toBe(tt.selected);
     });
   }
 });

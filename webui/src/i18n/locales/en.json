@@ -43,6 +43,61 @@
     "create": "Create flag",
     "home": "Home"
   },
+  "home": {
+    "greeting": {
+      "morning": "Good morning, {{name}}",
+      "afternoon": "Good afternoon, {{name}}",
+      "evening": "Good evening, {{name}}"
+    },
+    "summaryRollouts_one": "{{count}} rollout running",
+    "summaryRollouts_other": "{{count}} rollouts running",
+    "summaryAttention_one": "{{count}} flag needs attention",
+    "summaryAttention_other": "{{count}} flags need attention",
+    "jump": "Jump to a flag…",
+    "noTeam": "Pick a team in the sidebar to see its dashboard.",
+    "stats": {
+      "flags": "Flags",
+      "flagsDetail": "{{enabled}} enabled · {{disabled}} disabled",
+      "rollouts": "Rollouts running",
+      "rolloutsDetail": "Progressive rollouts",
+      "changes": "Changes · 7 days",
+      "changesDetail": "Across this team",
+      "stale": "Stale flags",
+      "staleDetail": "100% one variation, no rules"
+    },
+    "attention": {
+      "title": "Needs your attention",
+      "empty": "Nothing needs your attention.",
+      "stale": "Serving 100% \"{{variation}}\" to everyone, safe to remove?",
+      "review": "Review",
+      "noOwner_one": "{{count}} flag has no owner",
+      "noOwner_other": "{{count}} flags have no owner",
+      "noOwnerHint": "Assign an owner so someone keeps them tidy",
+      "view": "View"
+    },
+    "rollouts": {
+      "title": "Rollouts in progress",
+      "all": "All flags",
+      "empty": "No progressive rollouts.",
+      "scheduled": "Scheduled · starts {{when}}",
+      "live": "Progressive · completes {{when}}",
+      "completed": "Completed {{when}}",
+      "disabled": "Flag disabled"
+    },
+    "activity": {
+      "title": "Recent activity",
+      "all": "Audit log",
+      "empty": "No activity yet."
+    },
+    "flagsets": {
+      "title": "Flagsets",
+      "manage": "Manage",
+      "empty": "No flagsets yet.",
+      "name": "Flagset",
+      "flags": "Flags",
+      "updated": "Last updated"
+    }
+  },
   "auditLog": {
     "title": "Audit log",
     "subtitle": "Every change across this team's flags, flagsets & keys",

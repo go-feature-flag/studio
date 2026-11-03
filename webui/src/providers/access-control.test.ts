@@ -11,7 +11,7 @@ import {
   getCachedMembership,
   getCachedUser,
 } from "./auth";
-import { accessControlProvider } from "./access-control";
+import { accessControlProvider, canWriteTeam } from "./access-control";
 
 const mockUser = getCachedUser as unknown as ReturnType<typeof vi.fn>;
 const mockCompany = getCachedCompany as unknown as ReturnType<typeof vi.fn>;
@@ -174,4 +174,24 @@ describe("accessControlProvider.can", () => {
       expect((await callTeam("edit")).can).toBe(true);
     });
   });
+});
+
+describe("canWriteTeam", () => {
+  const tests = [
+    { name: "no team", teamId: null, superAdmin: false, company: null, role: undefined, want: false },
+    { name: "super admin", teamId: "t1", superAdmin: true, company: null, role: undefined, want: true },
+    { name: "company admin (inherited)", teamId: "t1", superAdmin: false, company: { role: "admin" }, role: undefined, want: true },
+    { name: "team admin", teamId: "t1", superAdmin: false, company: null, role: "admin", want: true },
+    { name: "team editor", teamId: "t1", superAdmin: false, company: null, role: "editor", want: true },
+    { name: "team viewer", teamId: "t1", superAdmin: false, company: null, role: "viewer", want: false },
+    { name: "not a member", teamId: "t1", superAdmin: false, company: null, role: undefined, want: false },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      mockUser.mockReturnValue({ isSuperAdmin: tt.superAdmin });
+      mockCompany.mockReturnValue(tt.company);
+      mockMembership.mockReturnValue(tt.role ? [{ teamId: "t1", role: tt.role }] : []);
+      expect(canWriteTeam(tt.teamId)).toBe(tt.want);
+    });
+  }
 });

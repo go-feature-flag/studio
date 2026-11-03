@@ -98,6 +98,22 @@ export function rolloutStatus(
   return "live";
 }
 
+// rolloutPercent is the share served the end variation at nowTs: flat before
+// and after the window, linear in between.
+export function rolloutPercent(
+  nowTs: number,
+  startTs: number,
+  endTs: number,
+  initialPct: number,
+  endPct: number,
+): number {
+  if (nowTs <= startTs) return initialPct;
+  if (nowTs >= endTs) return endPct;
+  return Math.round(
+    initialPct + ((endPct - initialPct) * (nowTs - startTs)) / (endTs - startTs),
+  );
+}
+
 // relativeTime renders a human, locale-aware "in 6 days" / "4 days ago" string,
 // picking the largest unit that fits the magnitude (down to seconds).
 export function relativeTime(targetTs: number, nowTs: number): string {
@@ -271,13 +287,7 @@ export function RolloutCurve({
   }
 
   const nowTs = Date.now();
-  const nowPct = Math.round(
-    nowTs <= startTs
-      ? initialPct
-      : nowTs >= endTs
-        ? endPct
-        : initialPct + ((endPct - initialPct) * (nowTs - startTs)) / span,
-  );
+  const nowPct = rolloutPercent(nowTs, startTs, endTs, initialPct, endPct);
 
   const color = variationColor(
     endVariation,

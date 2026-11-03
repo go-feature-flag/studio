@@ -28,6 +28,7 @@ import {
 } from "@refinedev/core";
 import {
   ChevronRight,
+  HomeIcon,
   ListIcon,
   PlusIcon,
   ToggleLeftIcon,
@@ -35,9 +36,8 @@ import {
 import { useLocation } from "react-router";
 import React from "react";
 import {
-  canEditTeam,
   canSync,
-  effectiveTeamRole,
+  canWriteTeam,
   type ResourceAccessMeta,
 } from "@/providers/access-control";
 import { useActiveCompany } from "@/hooks/use-active-company";
@@ -53,9 +53,8 @@ export function Sidebar() {
   const { menuItems, selectedKey } = useMenu();
   const { activeCompanyId } = useActiveCompany();
   const { activeTeamId } = useActiveTeam();
-  const canCreateFlag =
-    !!activeTeamId &&
-    (canEditTeam(activeTeamId) || effectiveTeamRole(activeTeamId) === "editor");
+  const { pathname } = useLocation();
+  const canCreateFlag = canWriteTeam(activeTeamId);
   const recentlyEdited = useRecentlyEditedFlags();
   const isVisible = (item: TreeMenuItem): boolean => {
     const meta = (item.meta ?? {}) as ResourceAccessMeta;
@@ -137,6 +136,11 @@ export function Sidebar() {
             <TeamSwitcher />
           </div>
         )}
+        <SidebarButton
+          item={homeItem}
+          asLink={true}
+          isSelected={pathname === "/"}
+        />
         {canCreateFlag && (
           <SidebarButton item={createFlagItem} asLink={true} />
         )}
@@ -157,6 +161,14 @@ export function Sidebar() {
     </ShadcnSidebar>
   );
 }
+
+const homeItem = {
+  name: "home",
+  key: "home",
+  route: "/",
+  meta: { label: "Home", i18nKey: "nav.home", icon: <HomeIcon /> },
+  children: [],
+} as TreeMenuItem;
 
 // The flags page opens its create wizard when it sees ?create=1.
 const createFlagItem = {
