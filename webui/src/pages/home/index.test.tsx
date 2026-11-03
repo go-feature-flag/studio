@@ -150,10 +150,28 @@ describe("HomePage", () => {
     expect(screen.getByRole("link", { name: "web" })).toHaveAttribute("href", "/flagsets/fs-1");
   });
 
-  it("jumps to the flags list filtered by the query", async () => {
+  const jumpTests = [
+    { name: "jumps to the highlighted matching flag", type: "ROLL{Enter}", want: "/flags/f-roll" },
+    { name: "jumps to a flag picked with the arrows", type: "flag{ArrowDown}{Enter}", want: "/flags/f-roll" },
+    { name: "falls back to the flags list without a match", type: "check out{Enter}", want: "/flags?search=check%20out" },
+  ];
+  for (const tt of jumpTests) {
+    it(tt.name, async () => {
+      renderPage();
+      await userEvent.type(screen.getByRole("combobox", { name: "home.jump" }), tt.type);
+      expect(screen.getByTestId("loc")).toHaveTextContent(tt.want);
+    });
+  }
+
+  it("suggests matching flags and offers the full search", async () => {
     renderPage();
-    await userEvent.type(screen.getByRole("textbox", { name: "home.jump" }), "check out{Enter}");
-    expect(screen.getByTestId("loc")).toHaveTextContent("/flags?search=check%20out");
+    await userEvent.type(screen.getByRole("combobox", { name: "home.jump" }), "split");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "split-flag",
+      'home.jumpAll {"q":"split"}',
+    ]);
+    await userEvent.click(screen.getByRole("option", { name: /home\.jumpAll/ }));
+    expect(screen.getByTestId("loc")).toHaveTextContent("/flags?search=split");
   });
 
   const createTests = [

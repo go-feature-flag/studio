@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Command as CommandPrimitive } from "cmdk";
 import { useCustom, useGetIdentity, useTranslate } from "@refinedev/core";
 import { Link, useNavigate } from "react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { ListView } from "@/components/refine-ui/views/list-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { CommandGroup, CommandItem, CommandList } from "@/components/ui/command";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { useActiveTeam } from "@/hooks/use-active-team";
@@ -103,7 +105,7 @@ export function HomePage() {
             </p>
           )}
         </div>
-        <JumpToFlag />
+        <JumpToFlag flags={flags} />
         {canWriteTeam(activeTeamId) && (
           <Button asChild>
             <Link to="/flags?create=1">
@@ -172,30 +174,76 @@ function Stat({
   );
 }
 
-// JumpToFlag hands the query to the flags list, which already filters on ?search=.
-function JumpToFlag() {
+// JumpToFlag suggests the team's flags by name; the last row hands the query to
+// the flags list, which already filters on ?search=. Same cmdk setup as TagInput:
+// we filter, cmdk only supplies the roving highlight and Enter-selects.
+function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
   const t = useTranslate();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const s = q.trim();
+  const needle = s.toLowerCase();
+  const matches = needle
+    ? flags.filter((f) => f.name.toLowerCase().includes(needle)).slice(0, 8)
+    : [];
+
   return (
-    <form
+    <CommandPrimitive
       role="search"
+      label={t("home.jump")}
+      shouldFilter={false}
       className="relative w-64"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const s = q.trim();
-        navigate(s ? `/flags?search=${encodeURIComponent(s)}` : "/flags");
-      }}
     >
       <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
+      <CommandPrimitive.Input
+        asChild
         value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t("home.jump")}
-        aria-label={t("home.jump")}
-        className="pl-8"
-      />
-    </form>
+        onValueChange={(next) => {
+          setQ(next);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          // Delay so a mousedown on a dropdown item still registers.
+          blurTimer.current = setTimeout(() => setOpen(false), 120);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+        }}
+      >
+        <Input placeholder={t("home.jump")} className="pl-8" />
+      </CommandPrimitive.Input>
+      {open && s && (
+        <div
+          className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
+          onMouseDown={(e) => {
+            // Keep the input focused through the click.
+            e.preventDefault();
+            if (blurTimer.current) clearTimeout(blurTimer.current);
+          }}
+        >
+          <CommandList className="max-h-72">
+            <CommandGroup>
+              {matches.map((f) => (
+                <CommandItem key={f.id} value={f.id} onSelect={() => navigate(`/flags/${f.id}`)}>
+                  <span className="truncate font-mono">{f.name}</span>
+                </CommandItem>
+              ))}
+              <CommandItem
+                value="__search_all__"
+                onSelect={() => navigate(`/flags?search=${encodeURIComponent(s)}`)}
+              >
+                <SearchIcon />
+                <span className="truncate">{t("home.jumpAll", { q: s })}</span>
+              </CommandItem>
+            </CommandGroup>
+          </CommandList>
+        </div>
+      )}
+    </CommandPrimitive>
   );
 }
 
