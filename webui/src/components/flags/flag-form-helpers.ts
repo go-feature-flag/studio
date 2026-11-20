@@ -4,7 +4,7 @@
 
 import { defaultOperators, type Field as RqbField, type RuleGroupType } from "react-querybuilder";
 import type { FlagType } from "@/types/api";
-import type { Outcome, ProgState, Variation } from "./flag-form-types";
+import type { Outcome, OutcomeMode, ProgState, Variation } from "./flag-form-types";
 
 let seq = 1;
 export const nextId = () => seq++;
@@ -31,11 +31,13 @@ export function nextRuleName(names: string[]): string {
 }
 
 // isoToLocalInput converts a stored UTC ISO timestamp into the local wall-clock
-// string a <input type="datetime-local"> expects (YYYY-MM-DDTHH:mm).
+// string a <input type="datetime-local"> expects (YYYY-MM-DDTHH:mm[:ss[.sss]]).
 const pad2 = (n: number) => String(n).padStart(2, "0");
 export function isoToLocalInput(iso: string): string {
   const d = new Date(iso);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const ms = d.getMilliseconds() ? `.${String(d.getMilliseconds()).padStart(3, "0")}` : "";
+  const sec = d.getSeconds() || ms ? `:${pad2(d.getSeconds())}${ms}` : "";
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}${sec}`;
 }
 
 // localMidnight returns the datetime-local string (YYYY-MM-DDTHH:mm) for the given
@@ -57,6 +59,7 @@ export const newProg = (): ProgState => {
     endDate: localMidnight(tomorrow),
   };
 };
+export const OUTCOME_MODES: OutcomeMode[] = ["single", "percentage", "progressive"];
 export const newOutcome = (single = ""): Outcome => ({
   mode: "single",
   single,

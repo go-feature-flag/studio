@@ -243,6 +243,7 @@
       },
       "tabs": {
         "targeting": "Targeting",
+        "schedule": "Schedule",
         "variations": "Variations",
         "history": "History",
         "metadata": "Metadata",
@@ -325,6 +326,37 @@
         "diffTitle": "v{{n}} · changes",
         "noPrev": "Initial version — no previous to compare.",
         "updatedBy": "{{who}} · {{when}}"
+      },
+      "schedule": {
+        "title": "Scheduled rollout",
+        "subtitle": "Dated steps that change this flag. Each step applies on top of the ones before it.",
+        "empty": "No scheduled steps. Add one to change this flag at a set date.",
+        "addStep": "Add step",
+        "removeStep": "Remove step",
+        "toggleStep": "Show or hide this step",
+        "editServe": "Edit what {{target}} serves",
+        "undoChange": "Undo the {{target}} change",
+        "timeZone": "Times are in {{timeZone}}.",
+        "now": "Now",
+        "flagState": "Flag state",
+        "flag": {
+          "on": "On",
+          "off": "Off"
+        },
+        "state": {
+          "enable": "Enable",
+          "disable": "Disable"
+        },
+        "status": {
+          "applied": "applied",
+          "next": "next",
+          "scheduled": "scheduled"
+        },
+        "stepEmpty": "A step needs at least one change.",
+        "progressiveLocked": "Progressive rollouts can't be changed by a step",
+        "keptLocked": "Changed outside the editor",
+        "offNote": "The flag is off from this date, so it serves the SDK default.",
+        "moreChanges": "This step has other changes, see the flag's YAML or JSON."
       }
     },
     "wizard": {

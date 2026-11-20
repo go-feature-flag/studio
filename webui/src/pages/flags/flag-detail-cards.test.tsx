@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import type { FlagRule } from "@/types/api";
+import type { FlagRule, FlagScheduledStep } from "@/types/api";
 import type { Tr } from "@/components/flags/flag-form";
 
 import {
   DefaultRuleCard,
+  ScheduleCard,
   SettingsCard,
   TargetingCard,
   VariationsCard,
@@ -158,4 +159,89 @@ describe("SettingsCard", () => {
     expect(screen.queryByText("payments")).not.toBeInTheDocument();
     expect(screen.queryByText("flag.detail.metadataEmpty")).not.toBeInTheDocument();
   });
+});
+
+describe("ScheduleCard", () => {
+  const flag = (scheduledRollout: FlagScheduledStep[]) => ({
+    variations: { on: true, off: false },
+    targeting: [{ name: "beta", query: "x eq 1", variation: "on" }],
+    defaultRule: { variation: "off" },
+    scheduledRollout,
+  });
+
+  it("shows the empty state when there are no steps", () => {
+    render(<ScheduleCard t={t} payload={flag([])} names={names} />);
+    expect(screen.getByText("flag.detail.schedule.empty")).toBeInTheDocument();
+  });
+
+  it("shows the empty state for a flag without a payload", () => {
+    render(<ScheduleCard t={t} payload={undefined} names={names} />);
+    expect(screen.getByText("flag.detail.schedule.empty")).toBeInTheDocument();
+  });
+
+  it("shows a step without a date or rule name", () => {
+    render(<ScheduleCard t={t} payload={flag([{ targeting: [{ variation: "on" }] }])} names={names} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("flag.detail.schedule.moreChanges")).toBeInTheDocument();
+  });
+
+  it("lists steps oldest first with their status", () => {
+    const steps: FlagScheduledStep[] = [
+      { date: "2999-01-01T00:00:00Z", defaultRule: { variation: "on" } },
+      { date: "2000-01-01T00:00:00Z", disable: true },
+    ];
+    render(<ScheduleCard t={t} payload={flag(steps)} names={names} />);
+    const [first, second] = screen.getAllByRole("listitem");
+    expect(within(first).getByText("flag.detail.schedule.status.applied")).toBeInTheDocument();
+    expect(within(first).getByText("flag.detail.schedule.state.disable")).toBeInTheDocument();
+    expect(within(second).getByText("flag.detail.schedule.status.next")).toBeInTheDocument();
+    expect(within(second).getByText("flag.wizard.defaultRule")).toBeInTheDocument();
+  });
+
+  const tests: { name: string; step: FlagScheduledStep; want: string[]; more: boolean }[] = [
+    {
+      name: "rule split",
+      step: { date: "2999-01-01T00:00:00Z", targeting: [{ name: "beta", percentage: { on: 40, off: 60 } }] },
+      want: ["beta", "40%", "60%"],
+      more: false,
+    },
+    {
+      name: "enable",
+      step: { date: "2999-01-01T00:00:00Z", disable: false },
+      want: ["flag.detail.schedule.state.enable"],
+      more: false,
+    },
+    {
+      name: "changes it does not show",
+      step: { date: "2999-01-01T00:00:00Z", variations: { on: false } },
+      want: [],
+      more: true,
+    },
+    {
+      name: "rule the flag doesn't have",
+      step: { date: "2999-01-01T00:00:00Z", targeting: [{ name: "new", variation: "on" }] },
+      want: ["new"],
+      more: true,
+    },
+    {
+      name: "serve changes hidden when the step turns the flag off",
+      step: { date: "2999-01-01T00:00:00Z", disable: true, defaultRule: { variation: "on" } },
+      want: ["flag.detail.schedule.state.disable"],
+      more: true,
+    },
+    {
+      name: "rule query change",
+      step: { date: "2999-01-01T00:00:00Z", targeting: [{ name: "beta", query: "x eq 1" }] },
+      want: ["beta"],
+      more: true,
+    },
+  ];
+
+  for (const tt of tests) {
+    it(tt.name, () => {
+      render(<ScheduleCard t={t} payload={flag([tt.step])} names={names} />);
+      for (const w of tt.want) expect(screen.getByText(w)).toBeInTheDocument();
+      expect(screen.queryByText("flag.detail.schedule.moreChanges") !== null).toBe(tt.more);
+    });
+  }
 });

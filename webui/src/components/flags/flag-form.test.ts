@@ -212,6 +212,7 @@ describe("percentage sum ignores orphaned variation keys (rename bug)", () => {
       metadata: {},
       customMetadata: {},
       customMetaValid: true,
+      schedule: [],
     };
     const payload = buildFlagPayload(form) as {
       defaultRule?: { percentage?: Record<string, number> };
@@ -488,6 +489,20 @@ describe("progressive rollout keeps distinct initial/end variations", () => {
     expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     // Parsing the local string back (as local time) recovers the same instant.
     expect(new Date(local).getTime()).toBe(new Date(iso).getTime());
+  });
+
+  it("isoToLocalInput keeps seconds when the timestamp has them", () => {
+    const iso = "2024-03-05T07:09:30Z";
+    const local = isoToLocalInput(iso);
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:30$/);
+    expect(new Date(local).getTime()).toBe(new Date(iso).getTime());
+  });
+
+  it("isoToLocalInput keeps milliseconds so stored dates round-trip", () => {
+    const iso = "2026-03-01T09:00:00.500Z";
+    const local = isoToLocalInput(iso);
+    expect(local).toMatch(/:00\.500$/);
+    expect(new Date(local).toISOString()).toBe(iso);
   });
 
   it("localMidnight formats the given date at 00:00 local time", () => {
