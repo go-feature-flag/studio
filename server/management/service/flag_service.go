@@ -210,7 +210,7 @@ func (s *FlagService) SetDisabled(ctx context.Context, actorID, id string, disab
 		if before.Disabled == disabled {
 			return nil, nil
 		}
-		if err := s.flags.SetDisabled(ctx, tx, id, disabled); err != nil {
+		if err := s.flags.SetDisabled(ctx, tx, id, disabled, &actorID); err != nil {
 			return nil, err
 		}
 		return &repository.AuditInput{

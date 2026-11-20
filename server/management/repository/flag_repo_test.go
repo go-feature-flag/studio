@@ -123,7 +123,7 @@ func TestFlagRepoListByFlagsetFilters(t *testing.T) {
 	testutil.SeedFlag(t, db, fs.ID, "alpha", nil, nil)
 	beta := testutil.SeedFlag(t, db, fs.ID, "beta", nil, nil)
 	testutil.SeedFlag(t, db, fs.ID, "gamma", nil, nil)
-	require.NoError(t, repo.SetDisabled(ctx, nil, beta.ID, true))
+	require.NoError(t, repo.SetDisabled(ctx, nil, beta.ID, true, nil))
 
 	// No filters: all three, ordered by name.
 	items, total, err := repo.ListByFlagset(ctx, fs.ID, model.FlagFilters{})
@@ -224,7 +224,7 @@ func TestFlagRepoSoftDeleteAndDisable(t *testing.T) {
 	assert.Equal(t, team.ID, teamID)
 
 	// SetDisabled toggles.
-	require.NoError(t, repo.SetDisabled(ctx, nil, flag.ID, true))
+	require.NoError(t, repo.SetDisabled(ctx, nil, flag.ID, true, nil))
 	got, _ := repo.GetByID(ctx, flag.ID)
 	assert.True(t, got.Disabled)
 
@@ -235,7 +235,7 @@ func TestFlagRepoSoftDeleteAndDisable(t *testing.T) {
 
 	// Operations on a deleted flag report ErrNotFound.
 	assert.ErrorIs(t, repo.SoftDelete(ctx, nil, flag.ID), repository.ErrNotFound)
-	assert.ErrorIs(t, repo.SetDisabled(ctx, nil, flag.ID, false), repository.ErrNotFound)
+	assert.ErrorIs(t, repo.SetDisabled(ctx, nil, flag.ID, false, nil), repository.ErrNotFound)
 	_, err = repo.TeamID(ctx, flag.ID)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
@@ -415,7 +415,7 @@ func TestFlagRepoListByTeamFiltersAndPaging(t *testing.T) {
 	testutil.SeedFlag(t, db, prod.ID, "checkout_float", json.RawMessage(payloads["float"]), nil)
 	testutil.SeedFlag(t, db, stg.ID, "json_flag", json.RawMessage(payloads["json"]), &alice.ID)
 	off := testutil.SeedFlag(t, db, stg.ID, "bool_flag", nil, nil)
-	require.NoError(t, repo.SetDisabled(ctx, nil, off.ID, true))
+	require.NoError(t, repo.SetDisabled(ctx, nil, off.ID, true, nil))
 
 	names := func(items []model.FlagInstance) []string {
 		out := make([]string, len(items))
@@ -664,7 +664,7 @@ func TestFlagRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, _, err = versions.ListByFlag(ctx, id, 10, 0)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.ErrorIs(t, flags.SetDisabled(ctx, nil, id, true), context.Canceled)
+	assert.ErrorIs(t, flags.SetDisabled(ctx, nil, id, true, nil), context.Canceled)
 
 	// Writes take the caller's tx: a failed statement surfaces its error.
 	tx, err := db.Pool.Begin(t.Context())
@@ -676,7 +676,7 @@ func TestFlagRepoQueryErrors(t *testing.T) {
 	assert.ErrorContains(t, err, "25P02", "aborted tx")
 	_, err = flags.UpdateCurrentVersion(t.Context(), tx, id, id)
 	assert.ErrorContains(t, err, "25P02")
-	assert.ErrorContains(t, flags.SetDisabled(t.Context(), tx, id, true), "25P02")
+	assert.ErrorContains(t, flags.SetDisabled(t.Context(), tx, id, true, nil), "25P02")
 	assert.ErrorContains(t, flags.SoftDelete(t.Context(), tx, id), "25P02")
 	assert.ErrorContains(t, flags.ReplaceFlagTags(t.Context(), tx, id, nil), "25P02")
 	_, err = versions.Insert(t.Context(), tx, id, nil, "", nil)

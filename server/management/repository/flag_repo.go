@@ -255,7 +255,8 @@ func (r *FlagRepo) ListTeamOwners(ctx context.Context, teamID string) ([]model.F
 func (r *FlagRepo) UpdateCurrentVersion(
 	ctx context.Context, tx pgx.Tx, flagID, versionID string,
 ) (updatedAt time.Time, err error) {
-	err = tx.QueryRow(ctx, `UPDATE flags SET current_version_id = $2, updated_at = NOW()
+	err = tx.QueryRow(ctx, `UPDATE flags SET current_version_id = $2, updated_at = NOW(),
+		updated_by = (SELECT created_by FROM flag_versions WHERE id = $2)
 		WHERE id = $1 AND deleted_at IS NULL RETURNING updated_at`, flagID, versionID).Scan(&updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return time.Time{}, ErrNotFound
@@ -294,14 +295,15 @@ func (r *FlagRepo) ListTeamTags(ctx context.Context, teamID string) ([]string, e
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// SetDisabled sets the flag's on/off state, inside tx when it is not nil.
-func (r *FlagRepo) SetDisabled(ctx context.Context, tx pgx.Tx, flagID string, disabled bool) error {
+// SetDisabled sets the flag's on/off state and who set it, inside tx when it is not nil.
+func (r *FlagRepo) SetDisabled(ctx context.Context, tx pgx.Tx, flagID string, disabled bool, actorID *string) error {
 	exec := r.db.Pool.Exec
 	if tx != nil {
 		exec = tx.Exec
 	}
 	tag, err := exec(ctx,
-		`UPDATE flags SET disabled = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, flagID, disabled)
+		`UPDATE flags SET disabled = $2, updated_at = NOW(), updated_by = $3 WHERE id = $1 AND deleted_at IS NULL`,
+		flagID, disabled, actorID)
 	if err != nil {
 		return err
 	}

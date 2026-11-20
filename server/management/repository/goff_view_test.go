@@ -61,7 +61,7 @@ func TestGoffFlagsView(t *testing.T) {
 	testutil.SeedFlag(t, db, fs.ID, "a-enabled", nil, nil)
 	disabled := testutil.SeedFlag(t, db, fs.ID, "b-disabled", []byte(selfEnabling), nil)
 	deleted := testutil.SeedFlag(t, db, fs.ID, "c-deleted", nil, nil)
-	require.NoError(t, flags.SetDisabled(ctx, nil, disabled.ID, true))
+	require.NoError(t, flags.SetDisabled(ctx, nil, disabled.ID, true, nil))
 	require.NoError(t, flags.SoftDelete(ctx, nil, deleted.ID))
 
 	// A flag with a newer version than its current one: only the current
@@ -91,4 +91,31 @@ func TestGoffFlagsView(t *testing.T) {
 	_, err := db.Pool.Exec(ctx, `UPDATE flagsets SET deleted_at = NOW() WHERE id = $1`, other.ID)
 	require.NoError(t, err)
 	assert.Empty(t, queryGoff(t, db, other.ID), "flags of a deleted flagset are excluded")
+}
+
+func TestGoffFlagsViewUpdatedBy(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	flags := repository.NewFlagRepo(db)
+	ctx := t.Context()
+
+	team := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Acme").ID, "Platform")
+	fs := testutil.SeedFlagset(t, db, team.ID, "prod")
+	jane := testutil.SeedUser(t, db, "jane@example.com", "Jane Doe", false)
+	bob := testutil.SeedUser(t, db, "bob@example.com", "Bob", false)
+	nameless := testutil.SeedUser(t, db, "anon@example.com", "", false)
+
+	withMeta := `{"variations":{"on":true},"defaultRule":{"variation":"on"},"metadata":{"team":"core"}}`
+	testutil.SeedFlag(t, db, fs.ID, "a-saved", []byte(withMeta), &jane.ID)
+	switched := testutil.SeedFlag(t, db, fs.ID, "b-switched", nil, &jane.ID)
+	require.NoError(t, flags.SetDisabled(ctx, nil, switched.ID, true, &bob.ID))
+	testutil.SeedFlag(t, db, fs.ID, "c-nameless", nil, &nameless.ID)
+	testutil.SeedFlag(t, db, fs.ID, "d-no-author", nil, nil)
+
+	meta := func(r goffRow) any { return r.config["metadata"] }
+	rows := queryGoff(t, db, fs.ID)
+	require.Len(t, rows, 4)
+	assert.Equal(t, map[string]any{"team": "core", "updatedBy": "Jane Doe"}, meta(rows[0]), "payload metadata is kept")
+	assert.Equal(t, map[string]any{"updatedBy": "Bob"}, meta(rows[1]), "an on/off switch credits who flipped it")
+	assert.Nil(t, meta(rows[2]), "a user without a name adds nothing")
+	assert.Nil(t, meta(rows[3]), "a version without an author adds nothing")
 }
