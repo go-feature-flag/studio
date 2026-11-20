@@ -48,10 +48,12 @@ export function FlagWizard({
   tagSuggestions = [],
   autoOpen = false,
   onClosed,
+  defaultFlagsetId,
 }: {
   teamId: string;
   onCreated: () => void;
   tagSuggestions?: string[];
+  defaultFlagsetId?: string;
   /** Opens the wizard when it flips to true (e.g. the sidebar "Create" link). */
   autoOpen?: boolean;
   onClosed?: () => void;
@@ -74,7 +76,13 @@ export function FlagWizard({
 
   // ── wizard state ──
   const [step, setStep] = useState(1);
-  const [flagsetId, setFlagsetId] = useState("");
+  const [pickedFlagsetId, setFlagsetId] = useState("");
+  const flagsetId =
+    [pickedFlagsetId, defaultFlagsetId].find((id) =>
+      flagsets.some((f) => f.id === id),
+    ) ??
+    flagsets[0]?.id ??
+    "";
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
@@ -100,7 +108,7 @@ export function FlagWizard({
     setRules([]);
     setDefaultOutcome(newOutcome());
     setComment("");
-    setFlagsetId(flagsets[0]?.id ?? "");
+    setFlagsetId("");
   };
 
   const onOpenChange = (o: boolean) => {
