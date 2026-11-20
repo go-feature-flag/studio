@@ -60,6 +60,17 @@ describe("TargetingCard", () => {
       rule: { query: "q" },
       want: ["—"],
     },
+    {
+      name: "rule turned off",
+      rule: { name: "beta", query: "q", variation: "on", disable: true },
+      want: ["beta", "flag.wizard.ruleOff"],
+    },
+    {
+      name: "rule turned on explicitly",
+      rule: { name: "beta", query: "q", variation: "on", disable: false },
+      want: ["beta"],
+      absent: ["flag.wizard.ruleOff"],
+    },
   ];
   for (const tt of tests) {
     it(`renders a rule with ${tt.name}`, () => {
