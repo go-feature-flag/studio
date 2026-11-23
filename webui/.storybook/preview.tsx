@@ -217,7 +217,21 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
-    a11y: { test: "error" },
+    a11y: {
+      test: "error",
+      config: {
+        rules: [
+          {
+            // While a Radix modal (menu, dialog) is open it aria-hides the rest
+            // of the page, tagging those nodes data-aria-hidden, and traps focus
+            // inside. axe still counts the trigger behind it as focusable; skip
+            // only those nodes so the rule keeps checking everything else.
+            id: "aria-hidden-focus",
+            selector: '[aria-hidden="true"]:not([data-aria-hidden])',
+          },
+        ],
+      },
+    },
   },
   initialGlobals: { theme: "light" },
   globalTypes: {
