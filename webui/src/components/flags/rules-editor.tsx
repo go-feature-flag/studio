@@ -127,7 +127,19 @@ export function RulesEditor({
                 </Button>
               </div>
               <div className={cn(r.disable && "opacity-50")}>
-                <div className="queryBuilder-branches">
+                <div
+                  className="queryBuilder-branches"
+                  // react-querybuilder renders an unnamed role="form" with no
+                  // prop to name it; name it so each rule's landmark is distinct.
+                  ref={(el) =>
+                    el
+                      ?.querySelector('[role="form"]')
+                      ?.setAttribute(
+                        "aria-label",
+                        t("flag.wizard.ruleConditions", { index: i + 1 }),
+                      )
+                  }
+                >
                   <QueryBuilderShadcnUi>
                     <QueryBuilder
                       fields={QB_FIELDS}

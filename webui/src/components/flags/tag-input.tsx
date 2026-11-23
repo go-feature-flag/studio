@@ -184,7 +184,7 @@ export function TagInput({
         </p>
       )}
 
-      {showDropdown && (
+      {showDropdown ? (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- mouse-only focus guard; keyboard selection goes through cmdk
         <div
           className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
@@ -224,6 +224,10 @@ export function TagInput({
             </CommandGroup>
           </CommandList>
         </div>
+      ) : (
+        // cmdk always points the input's aria-controls at its list; keep an
+        // empty one mounted so that reference resolves while closed.
+        <CommandList hidden />
       )}
     </CommandPrimitive>
   );

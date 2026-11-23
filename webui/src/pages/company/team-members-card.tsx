@@ -280,7 +280,7 @@ export function TeamMembersCard({
                       value={m.role}
                       onValueChange={(v) => onChangeRole(m, v as Role)}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger aria-label={t("common.roleOf", { email: m.email })}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

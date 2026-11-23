@@ -216,7 +216,7 @@ function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
       >
         <Input placeholder={t("home.jump")} className="pl-8" />
       </CommandPrimitive.Input>
-      {open && s && (
+      {open && s ? (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- mouse-only focus guard; keyboard selection goes through cmdk
         <div
           className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
@@ -243,6 +243,10 @@ function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
             </CommandGroup>
           </CommandList>
         </div>
+      ) : (
+        // cmdk always points the input's aria-controls at its list; keep an
+        // empty one mounted so that reference resolves while closed.
+        <CommandList hidden />
       )}
     </CommandPrimitive>
   );

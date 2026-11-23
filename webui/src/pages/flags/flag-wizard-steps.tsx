@@ -157,7 +157,11 @@ export function BasicsStep({
         />
       </Field>
       <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-3">
-        <Switch checked={enableOnSave} onCheckedChange={setEnableOnSave} />
+        <Switch
+          aria-label={t("flag.wizard.enableOnSave")}
+          checked={enableOnSave}
+          onCheckedChange={setEnableOnSave}
+        />
         <div className="text-xs">
           <b>{t("flag.wizard.enableOnSave")}</b>{" "}
           <span className="text-muted-foreground">

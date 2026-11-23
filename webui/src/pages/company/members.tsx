@@ -253,7 +253,7 @@ export function CompanyMembersCard({ companyId }: { companyId: string }) {
                     value={m.role}
                     onValueChange={(v) => onChangeRole(m, v as CompanyRole)}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label={t("common.roleOf", { email: m.email })}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

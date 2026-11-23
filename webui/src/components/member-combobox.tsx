@@ -61,6 +61,7 @@ export function MemberCombobox({
       <PopoverContent
         className="w-[--radix-popover-trigger-width] p-0"
         align="start"
+        aria-label={placeholder}
       >
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
