@@ -127,7 +127,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
     case "textarea":
       return (
         <Textarea
-          value={value}
+          value={value ?? ""}
           title={title}
           rows={2}
           disabled={disabled}
@@ -186,7 +186,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
   return (
     <Input
       type={inputTypeCoerced}
-      value={value}
+      value={value ?? ""}
       title={title}
       disabled={disabled}
       className={className}
