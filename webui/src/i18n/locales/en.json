@@ -365,6 +365,8 @@
       "ruleIssueCondition": "Add at least one condition",
       "ruleIssueValue": "Fill in every condition value",
       "ruleIssueRange": "Fill in both range bounds",
+      "rangeLower": "Lower bound",
+      "rangeUpper": "Upper bound",
       "ruleConditions": "Conditions for {{name}}",
       "ruleIssueOutcome": "Complete what this rule serves",
       "ruleFix": "Fix",

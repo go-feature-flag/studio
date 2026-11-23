@@ -1,3 +1,4 @@
+import { useTranslate } from "@refinedev/core";
 import type { ValueEditorProps } from "react-querybuilder";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +41,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
     ...props
   } = allProps;
 
+  const t = useTranslate();
   const { valueAsArray, multiValueHandler } = useValueEditor(allProps);
 
   if (operator === "null" || operator === "notNull") {
@@ -64,7 +66,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
             value={valueAsArray[i] ?? ""}
             disabled={disabled}
             className={standardClassnames.valueListItem}
-            placeholder={i === 0 ? "Lower bound" : "Upper bound"}
+            placeholder={t(i === 0 ? "flag.wizard.rangeLower" : "flag.wizard.rangeUpper")}
             onChange={(e) => multiValueHandler(e.target.value, i)}
             {...extraProps}
           />
