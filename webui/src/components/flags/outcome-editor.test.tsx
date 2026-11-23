@@ -147,7 +147,7 @@ describe("OutcomeEditor interactions", () => {
       name: "typing a percentage clamps to the remaining room",
       outcome: () => ({ ...percentageOutcome(), percentages: { off: 70 } }),
       act: () =>
-        fireEvent.change(screen.getByLabelText("on percentage"), {
+        fireEvent.change(screen.getAllByLabelText("flag.wizard.variationPercent")[0], {
           target: { value: "50" },
         }),
       want: (o) => expect(o.percentages).toEqual({ on: 30, off: 70 }),

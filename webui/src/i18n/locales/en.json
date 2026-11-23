@@ -43,7 +43,16 @@
     "auditLog": "Audit log",
     "recentlyEdited": "Recently edited",
     "create": "Create flag",
-    "home": "Home"
+    "home": "Home",
+    "breadcrumb": "Breadcrumb",
+    "toggleSidebar": "Toggle sidebar"
+  },
+  "pagination": {
+    "rowsPerPage": "Rows per page",
+    "firstPage": "Go to first page",
+    "previousPage": "Go to previous page",
+    "nextPage": "Go to next page",
+    "lastPage": "Go to last page"
   },
   "home": {
     "greeting": {
@@ -179,6 +188,17 @@
     "tags": "Tags",
     "updated": "Updated",
     "tagsPlaceholder": "Add a tag…",
+    "removeTag": "Remove {{tag}}",
+    "query": {
+      "fields": "Fields",
+      "operators": "Operators",
+      "value": "Value",
+      "combinators": "Combinators",
+      "addRule": "Add rule",
+      "addGroup": "Add group",
+      "removeRule": "Remove rule",
+      "removeGroup": "Remove group"
+    },
     "allTags": "Tags",
     "filterTags": "Filter tags",
     "noTags": "No tags found.",
@@ -350,6 +370,7 @@
       "value": "value",
       "variationNameLabel": "Variation {{index}} name",
       "variationValueLabel": "Variation {{index}} value",
+      "variationPercent": "{{name}} percentage",
       "addVariation": "Add variation",
       "enableOnSave": "Enable on save",
       "enableOnSaveHint": "flag will start evaluating immediately",

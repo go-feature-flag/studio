@@ -338,7 +338,7 @@ describe("FlagsPage - pagination", () => {
   it("moves to the next page", async () => {
     const user = userEvent.setup();
     renderPage("/flags?page=2");
-    await user.click(screen.getByRole("button", { name: "Go to next page" }));
+    await user.click(screen.getByRole("button", { name: "pagination.nextPage" }));
     expect(screen.getByTestId("location-search").textContent).toContain("page=3");
   });
 
@@ -709,7 +709,7 @@ describe("FlagsPage - misc states", () => {
     mockApi(flags, { total: 120, totalPages: 3 });
     const user = userEvent.setup();
     renderPage("/flags?page=2");
-    await user.click(screen.getByRole("button", { name: "Go to previous page" }));
+    await user.click(screen.getByRole("button", { name: "pagination.previousPage" }));
     expect(screen.getByTestId("location-search").textContent).not.toContain("page=");
   });
 });

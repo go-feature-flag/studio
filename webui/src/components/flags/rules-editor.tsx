@@ -53,6 +53,17 @@ export function RulesEditor({
   disabled?: boolean;
   isCreate?: boolean;
 }) {
+  // react-querybuilder's control titles double as their accessible names.
+  const qbTranslations = {
+    fields: { title: t("flag.query.fields") },
+    operators: { title: t("flag.query.operators") },
+    value: { title: t("flag.query.value") },
+    combinators: { title: t("flag.query.combinators") },
+    addRule: { title: t("flag.query.addRule") },
+    addGroup: { title: t("flag.query.addGroup") },
+    removeRule: { title: t("flag.query.removeRule") },
+    removeGroup: { title: t("flag.query.removeGroup") },
+  };
   const addRule = () =>
     setRules((rs) => [
       ...rs,
@@ -144,6 +155,7 @@ export function RulesEditor({
                     <QueryBuilder
                       fields={QB_FIELDS}
                       operators={QB_OPERATORS}
+                      translations={qbTranslations}
                       query={r.query}
                       onQueryChange={(q) => patchRule(r.id, { query: q })}
                     />

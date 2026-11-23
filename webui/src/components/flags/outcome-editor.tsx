@@ -118,7 +118,7 @@ export function OutcomeEditor({
                     min={0}
                     max={100}
                     step="any"
-                    aria-label={`${n} percentage`}
+                    aria-label={t("flag.wizard.variationPercent", { name: n })}
                     className="h-8 w-20 text-xs"
                     value={outcome.percentages[n] ?? ""}
                     onChange={(e) =>

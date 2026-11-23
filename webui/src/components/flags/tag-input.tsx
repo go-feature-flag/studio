@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useTranslate } from "@refinedev/core";
 import { Command as CommandPrimitive } from "cmdk";
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +57,7 @@ export function TagInput({
   maxTags = MAX_TAGS,
   maxTagLength = MAX_TAG_LENGTH,
 }: TagInputProps) {
+  const t = useTranslate();
   const [draft, setDraft] = useState("");
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +145,7 @@ export function TagInput({
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label={`Remove ${tag}`}
+                aria-label={t("flag.removeTag", { tag })}
                 className="ml-0.5 size-4 rounded-sm text-muted-foreground hover:bg-transparent hover:text-destructive"
                 onClick={(e) => {
                   e.stopPropagation();

@@ -58,7 +58,7 @@ export function Breadcrumb() {
   }, [breadcrumbs, Link, rootRouteResource, t]);
 
   return (
-    <ShadcnBreadcrumb>
+    <ShadcnBreadcrumb aria-label={t("nav.breadcrumb")}>
       <ShadcnBreadcrumbList>
         {breadCrumbItems.map((item, index) => {
           if (index === breadCrumbItems.length - 1) {

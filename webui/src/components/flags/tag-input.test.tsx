@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, fireEvent } from "@testing-library/react";
 import { TagInput } from "./tag-input";
 
+// Echo the key plus the tag, so each remove button keeps a distinct label.
+vi.mock("@refinedev/core", () => ({
+  useTranslate: () => (key: string, o?: { tag?: string }) =>
+    o?.tag ? `${key} ${o.tag}` : key,
+}));
+
 // Controlled harness: TagInput is controlled, so re-render with the new value
 // whenever onChange fires (mirrors how useFlagForm drives it).
 function renderControlled(initial: string[] = [], suggestions: string[] = []) {
@@ -51,7 +57,7 @@ describe("TagInput", () => {
 
   it("removes a tag via its × button", () => {
     const { onChange } = renderControlled(["beta", "prod"]);
-    fireEvent.click(screen.getByLabelText("Remove beta"));
+    fireEvent.click(screen.getByLabelText("flag.removeTag beta"));
     expect(onChange).toHaveBeenCalledWith(["prod"]);
   });
 
@@ -66,7 +72,7 @@ describe("TagInput", () => {
 
   it("hides remove buttons when readOnly", () => {
     render(<TagInput value={["beta"]} onChange={vi.fn()} readOnly />);
-    expect(screen.queryByLabelText("Remove beta")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("flag.removeTag beta")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
