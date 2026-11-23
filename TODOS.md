@@ -17,8 +17,6 @@ _Nothing open._
 
 ## P2 — Hardening and hygiene
 
-- [ ] **[WebUI] Preserve keyboard focus when opening and closing targeting rules.** `RulesEditor` unmounts the focused Edit/Fix button when opening and the focused Done button when closing, without transferring focus. Focus the rule-name input on opening and restore focus to the collapsed trigger on closing; cover both transitions with keyboard regression tests.
-
 - [ ] **[Auth] Return a 4xx with a reason when the OIDC subject changed.** When an email is already bound to a different `oidc_sub`, `UpsertFromOIDC` returns `ErrIdentityMismatch`. The callback (`handler/auth.go`) only maps `ErrLoginRejected` to 400, so the user gets a 500 `{"message":"login failed"}` with nothing to act on. That happens in dev whenever the Keycloak container is recreated against an existing database. Map `ErrIdentityMismatch` to a 403 with a message saying the account is linked to another identity.
 
 - [ ] **[WebUI] Keep delete/remove dialogs open until the request finishes.** The confirm button in `ConfirmDeleteDialog` (`src/components/`) and the remove dialogs in `pages/company/members.tsx`, `teams.tsx` and `team-members-card.tsx` is a Radix `AlertDialogAction`, which closes the dialog on click. The "Deleting…/Removing…" state never shows, and on an API error the dialog is already gone (the flagset delete makes the user retype the name). Call `e.preventDefault()` in the confirm handler and close on success; the current tests assert today's behaviour and need updating with the fix.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   RulesEditor,
   EMPTY_QUERY,
@@ -236,12 +237,26 @@ describe("RulesEditor compact rows", () => {
     expect(nameInputs()).toHaveLength(0);
   });
 
+  // Header chevron comes first, the Done button at the bottom of the rule second.
+  for (const tt of [{ name: "header chevron", idx: 0 }, { name: "Done button", idx: 1 }]) {
+    it(`moves keyboard focus into an opened rule and back to its row when closed with the ${tt.name}`, async () => {
+      const user = userEvent.setup();
+      render(<Harness initial={[makeRule("beta"), makeRule("eu")]} />);
+      edit("eu").focus();
+      await user.keyboard("{Enter}");
+      expect(screen.getByDisplayValue("eu")).toHaveFocus();
+      screen.getAllByRole("button", { name: "flag.wizard.ruleDone" })[tt.idx].focus();
+      await user.keyboard("{Enter}");
+      expect(edit("eu")).toHaveFocus();
+    });
+  }
+
   it("opens a newly added rule", () => {
     render(<Harness initial={[makeRule("beta")]} />);
     fireEvent.click(screen.getByRole("button", { name: "flag.wizard.addRule" }));
     // Name input + the pre-filled condition's (still empty) value input.
     expect(nameInputs()).toHaveLength(2);
-    expect(screen.getByDisplayValue("Rule 1")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Rule 1")).toHaveFocus();
     expect(edit("beta")).toBeInTheDocument();
   });
 

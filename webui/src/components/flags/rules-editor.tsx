@@ -2,7 +2,7 @@
 // default rule. Shared by the wizard's step 2 and the detail Targeting tab.
 // Extracted from flag-form.tsx.
 
-import { useId, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useId, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { QueryBuilder, formatQuery, type RuleGroupType } from "react-querybuilder";
 import { QueryBuilderShadcnUi } from "@/components/react-querybuilder-shadcn-ui";
 import { Input } from "@/components/ui/input";
@@ -116,6 +116,13 @@ export function RulesEditor({
   // Only one rule shows the full editor at a time; the others collapse to a
   // one-line summary so long rule lists stay scannable.
   const [openId, setOpenId] = useState<number | null>(null);
+  // Opening and closing unmount the focused control, so focus moves to the
+  // name input (autoFocus) on open and back to the rule's row on close.
+  const refocusId = useRef<number | null>(null);
+  const toggleRule = (id: number, open: boolean) => {
+    if (!open) refocusId.current = id;
+    setOpenId(open ? id : null);
+  };
   const summaryId = useId();
   const addRule = () => {
     const id = nextId();
@@ -204,7 +211,7 @@ export function RulesEditor({
               <Collapsible
                 key={r.id}
                 open={open}
-                onOpenChange={(o) => setOpenId(o ? r.id : null)}
+                onOpenChange={(o) => toggleRule(r.id, o)}
                 className={cn(
                   "rounded-md border transition-colors motion-safe:duration-400",
                   open ? "border-primary ring-1 ring-primary" : "hover:bg-muted/50",
@@ -217,6 +224,7 @@ export function RulesEditor({
                     <>
                       {keyword}
                       <Input
+                        autoFocus
                         className="h-8 min-w-0 max-w-md flex-1 text-xs"
                         value={r.name}
                         onChange={(e) => patchRule(r.id, { name: e.target.value })}
@@ -225,6 +233,12 @@ export function RulesEditor({
                   ) : (
                     <CollapsibleTrigger asChild>
                       <button
+                        ref={(el) => {
+                          if (el && refocusId.current === r.id) {
+                            refocusId.current = null;
+                            el.focus();
+                          }
+                        }}
                         type="button"
                         className={cn(
                           "flex min-w-0 flex-1 items-center gap-2 text-left text-xs",
@@ -323,7 +337,7 @@ export function RulesEditor({
                       </div>
                     </div>
                     <div className="mt-3 flex justify-end">
-                      <Button size="sm" variant="secondary" onClick={() => setOpenId(null)}>
+                      <Button size="sm" variant="secondary" onClick={() => toggleRule(r.id, false)}>
                         {t("flag.wizard.ruleDone")}
                       </Button>
                     </div>
