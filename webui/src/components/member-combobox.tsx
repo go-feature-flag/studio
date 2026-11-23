@@ -47,6 +47,7 @@ export function MemberCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={placeholder}
           className={cn(
             "justify-between font-normal",
             !value && "text-muted-foreground",

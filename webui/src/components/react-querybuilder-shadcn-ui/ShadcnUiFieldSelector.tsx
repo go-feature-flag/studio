@@ -124,6 +124,7 @@ export const ShadcnUiFieldSelector = ({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={title}
           disabled={disabled}
           className="w-[180px] justify-between font-normal"
           {...extraProps}

@@ -62,6 +62,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
             key={key}
             type={inputTypeCoerced}
             value={valueAsArray[i] ?? ""}
+            aria-label={`${title} ${key}`}
             disabled={disabled}
             className={standardClassnames.valueListItem}
             placeholder={placeHolderText}
@@ -188,6 +189,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
       type={inputTypeCoerced}
       value={value}
       title={title}
+      aria-label={title}
       disabled={disabled}
       className={className}
       placeholder={placeHolderText}

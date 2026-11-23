@@ -53,6 +53,7 @@ export function TagFilter({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-label={t("flag.allTags")}
           className="h-9 w-[160px] justify-between text-sm font-normal"
         >
           <span className="flex items-center gap-1.5 truncate">

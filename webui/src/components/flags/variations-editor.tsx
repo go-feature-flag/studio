@@ -43,7 +43,7 @@ export function VariationsEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      {variations.map((v) => {
+      {variations.map((v, i) => {
         const nameErr = isBoolean
           ? null
           : v.name.trim() === ""
@@ -63,6 +63,7 @@ export function VariationsEditor({
                   "h-8 font-mono text-xs",
                   nameErr && "border-destructive",
                 )}
+                aria-label={t("flag.wizard.variationNameLabel", { index: i + 1 })}
                 value={v.name}
                 onChange={(e) => patch(v.id, { name: e.target.value })}
                 placeholder="name"
@@ -75,6 +76,7 @@ export function VariationsEditor({
             {isBoolean ? (
               <Input
                 className="h-8 font-mono text-xs"
+                aria-label={t("flag.wizard.variationValueLabel", { index: i + 1 })}
                 value={v.value}
                 disabled
               />
@@ -85,6 +87,7 @@ export function VariationsEditor({
                     "h-8 font-mono text-xs",
                     valErr && "border-destructive",
                   )}
+                  aria-label={t("flag.wizard.variationValueLabel", { index: i + 1 })}
                   value={v.value}
                   onChange={(e) => patch(v.id, { value: e.target.value })}
                   placeholder={t("flag.wizard.value")}

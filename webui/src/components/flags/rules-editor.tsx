@@ -99,6 +99,7 @@ export function RulesEditor({
                   {i === 0 ? t("flag.wizard.if") : t("flag.wizard.elseIf")}
                 </KeywordChip>
                 <Input
+                  aria-label={t("flag.wizard.ruleName", { index: i + 1 })}
                   className="h-8 w-48 text-xs"
                   value={r.name}
                   onChange={(e) => patchRule(r.id, { name: e.target.value })}
