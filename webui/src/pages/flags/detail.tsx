@@ -29,7 +29,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { TipCallout } from "@/components/ui/tip-callout";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import {
   Tooltip,
@@ -449,20 +448,16 @@ export function FlagDetailPage() {
                 {section === "targeting" && (
                   <div className="flex flex-col gap-4">
                     {canEdit ? (
-                      <>
-                        <TipCallout title={t("flag.detail.targetingTipsTitle")}>
-                          {t("flag.detail.targetingTips")}
-                        </TipCallout>
-                        <RulesEditor
-                          t={t}
-                          variationNames={form.variationNames}
-                          rules={form.rules}
-                          setRules={form.setRules}
-                          defaultOutcome={form.defaultOutcome}
-                          setDefaultOutcome={form.setDefaultOutcome}
-                          disabled={flag.disabled}
-                        />
-                      </>
+                      <RulesEditor
+                        t={t}
+                        variationNames={form.variationNames}
+                        rules={form.rules}
+                        setRules={form.setRules}
+                        defaultOutcome={form.defaultOutcome}
+                        setDefaultOutcome={form.setDefaultOutcome}
+                        disabled={flag.disabled}
+                        showTips
+                      />
                     ) : (
                       <>
                         <TargetingCard

@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TipCallout } from "@/components/ui/tip-callout";
+import { useDismissedTip } from "@/hooks/use-dismissed-tip";
 import {
   AlertTriangleIcon,
   ChevronUpIcon,
@@ -106,6 +108,7 @@ export function RulesEditor({
   setDefaultOutcome,
   disabled = false,
   isCreate = false,
+  showTips = false,
 }: {
   t: Tr;
   variationNames: string[];
@@ -115,6 +118,8 @@ export function RulesEditor({
   setDefaultOutcome: (o: Outcome) => void;
   disabled?: boolean;
   isCreate?: boolean;
+  // The wizard shows its own tips in a sidebar.
+  showTips?: boolean;
 }) {
   // Only one rule shows the full editor at a time; the others collapse to a
   // one-line summary so long rule lists stay scannable.
@@ -127,6 +132,8 @@ export function RulesEditor({
     setOpenId(open ? id : null);
   };
   const summaryId = useId();
+  const [targetingTipHidden, hideTargetingTip] = useDismissedTip("targeting");
+  const [defaultRuleTipHidden, hideDefaultRuleTip] = useDismissedTip("default-rule");
   const addRule = () => {
     const id = nextId();
     setRules((rs) => [
@@ -166,6 +173,16 @@ export function RulesEditor({
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-3">
+          {showTips && !targetingTipHidden && (
+            <TipCallout
+              title={t("flag.detail.targetingTipsTitle")}
+              inline
+              onDismiss={hideTargetingTip}
+              dismissLabel={t("common.hideTip")}
+            >
+              {t("flag.detail.targetingTips")}
+            </TipCallout>
+          )}
           {rules.length === 0 && (
             <EmptyState variant="inline" className="p-3">
               {t("flag.wizard.noRules")}
@@ -363,7 +380,17 @@ export function RulesEditor({
             <Badge variant="secondary">{t("flag.wizard.fallbackBadge")}</Badge>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
+          {showTips && !defaultRuleTipHidden && (
+            <TipCallout
+              title={t("flag.detail.targetingTipsTitle")}
+              inline
+              onDismiss={hideDefaultRuleTip}
+              dismissLabel={t("common.hideTip")}
+            >
+              {t("flag.detail.defaultRuleTips")}
+            </TipCallout>
+          )}
           <OutcomeEditor
             t={t}
             variationNames={variationNames}

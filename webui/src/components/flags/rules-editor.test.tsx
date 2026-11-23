@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -76,6 +76,49 @@ describe("RulesEditor keyword chips", () => {
     // Default section -> OTHERWISE keyword + Fallback badge.
     expect(getByText("flag.wizard.otherwise")).toBeTruthy();
     expect(getByText("flag.wizard.fallbackBadge")).toBeTruthy();
+  });
+});
+
+describe("RulesEditor tips", () => {
+  beforeEach(() => localStorage.clear());
+  const editor = (showTips?: boolean) => (
+    <RulesEditor
+      t={t}
+      variationNames={["on", "off"]}
+      rules={[]}
+      setRules={() => {}}
+      defaultOutcome={newOutcome("off")}
+      setDefaultOutcome={() => {}}
+      showTips={showTips}
+    />
+  );
+  const tips = () => [
+    screen.queryAllByText("flag.detail.targetingTips").length,
+    screen.queryAllByText("flag.detail.defaultRuleTips").length,
+  ];
+
+  const tests = [
+    { name: "shows a tip in each card", showTips: true, want: [1, 1] },
+    { name: "hides the tips by default", showTips: undefined, want: [0, 0] },
+  ];
+  for (const tt of tests) {
+    it(tt.name, () => {
+      render(editor(tt.showTips));
+      expect(tips()).toEqual(tt.want);
+    });
+  }
+
+  it("removes a tip on its own and keeps it hidden after a reload", () => {
+    const { unmount } = render(editor(true));
+    fireEvent.click(screen.getAllByRole("button", { name: "common.hideTip" })[0]);
+    // It fades out first and is removed once the animation ends.
+    expect(tips()).toEqual([1, 1]);
+    fireEvent.animationEnd(screen.getByText("flag.detail.targetingTips").closest("div")!);
+    expect(tips()).toEqual([0, 1]);
+
+    unmount();
+    render(editor(true));
+    expect(tips()).toEqual([0, 1]);
   });
 });
 
