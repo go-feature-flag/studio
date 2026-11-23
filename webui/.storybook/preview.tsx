@@ -233,7 +233,10 @@ const preview: Preview = {
       },
     },
   },
-  initialGlobals: { theme: "light" },
+  // The storybook-dark Vitest project sets this to run every story in dark mode.
+  initialGlobals: {
+    theme: (import.meta.env.VITE_STORYBOOK_THEME as ThemeName) ?? "light",
+  },
   globalTypes: {
     theme: {
       description: "Light / dark theme",

@@ -13,7 +13,7 @@ import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
 import a11yOneLight from "react-syntax-highlighter/dist/esm/styles/prism/a11y-one-light";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { a11yDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTheme } from "@/components/refine-ui/theme/theme-provider";
 
 // Register only the languages we actually render to keep the bundle lean (the
@@ -93,8 +93,8 @@ export const CodeBlock = memo(function CodeBlock({
   return (
     <SyntaxHighlighter
       language={language}
-      // a11yOneLight: oneLight's palette darkened to pass WCAG AA contrast.
-      style={isDark ? oneDark : a11yOneLight}
+      // Both a11y themes pass WCAG AA contrast; oneLight/oneDark did not.
+      style={isDark ? a11yDark : a11yOneLight}
       customStyle={customStyle}
       codeTagProps={CODE_TAG_PROPS}
     >
