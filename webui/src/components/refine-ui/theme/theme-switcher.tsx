@@ -1,13 +1,14 @@
 "use client";
 
 import { useTheme } from "@/components/refine-ui/theme/theme-provider";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useTranslate } from "@refinedev/core";
 import { Monitor, Moon, Sun } from "lucide-react";
 
@@ -24,43 +25,36 @@ const OPTIONS = [
   },
 ] as const;
 
-export function ThemeSwitcher({ className }: { className?: string }) {
+// Rendered inside the user dropdown menu, so it is built from menu items: a
+// toggle group there is invalid (radios in a menu) and the menu's arrow keys
+// skip it, leaving keyboard users no way to change the theme.
+export function ThemeSwitcher() {
   const { theme, setTheme } = useTheme();
   const t = useTranslate();
+  const Current = OPTIONS.find((o) => o.value === theme)?.Icon ?? Monitor;
 
   return (
-    <ToggleGroup
-      type="single"
-      value={theme}
-      onValueChange={(v) => v && setTheme(v as Theme)}
-      variant="outline"
-      size="sm"
-      className={cn("w-full", className)}
-    >
-      {OPTIONS.map(({ value, Icon, key, fallback }) => {
-        // `selected` is computed here rather than via `data-[state=on]:` because
-        // TooltipTrigger asChild and ToggleGroupItem render onto the same node and
-        // both set `data-state` — Tooltip's value overwrites ToggleGroup's "on".
-        const selected = theme === value;
-        return (
-          <Tooltip key={value}>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem
-                value={value}
-                aria-label={t(key, fallback)}
-                className={cn("flex-1", {
-                  "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground":
-                    selected,
-                })}
-              >
-                <Icon className={cn("h-4", "w-4")} />
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>{t(key, fallback)}</TooltipContent>
-          </Tooltip>
-        );
-      })}
-    </ToggleGroup>
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-2">
+        <Current className="h-4 w-4" />
+        {t("theme.label", "Theme")}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuPortal>
+        <DropdownMenuSubContent>
+          <DropdownMenuRadioGroup
+            value={theme}
+            onValueChange={(v) => setTheme(v as Theme)}
+          >
+            {OPTIONS.map(({ value, Icon, key, fallback }) => (
+              <DropdownMenuRadioItem key={value} value={value} className="gap-2">
+                <Icon className="h-4 w-4" />
+                {t(key, fallback)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuPortal>
+    </DropdownMenuSub>
   );
 }
 

@@ -146,9 +146,7 @@ export function SidebarUserMenu() {
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <div className={cn("px-2", "py-1.5")}>
-          <ThemeSwitcher />
-        </div>
+        <ThemeSwitcher />
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/profile">

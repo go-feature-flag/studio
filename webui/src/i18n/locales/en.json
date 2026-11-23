@@ -570,6 +570,7 @@
     "loggingOut": "Logging out..."
   },
   "theme": {
+    "label": "Theme",
     "dark": "Dark theme",
     "light": "Light theme",
     "system": "Use system setting"
