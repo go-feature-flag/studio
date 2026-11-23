@@ -77,6 +77,16 @@ describe("ruleIssues", () => {
       rule: { query: { combinator: "and", rules: [{ field: "email", operator: "=", value }] } },
       want: [],
     })),
+    ...[
+      { operator: "in", value: "", want: ["value"] },
+      { operator: "notIn", value: [], want: ["value"] },
+      { operator: "in", value: "a,b", want: [] },
+      { operator: "notIn", value: ["a"], want: [] },
+    ].map((tt) => ({
+      name: `${tt.operator} with ${JSON.stringify(tt.value)}`,
+      rule: { query: { combinator: "and", rules: [{ field: "plan", operator: tt.operator, value: tt.value }] } },
+      want: tt.want as RuleIssue[],
+    })),
     {
       name: "is null needs no value",
       rule: { query: { combinator: "and", rules: [{ field: "email", operator: "null", value: "" }] } },

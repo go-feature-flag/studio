@@ -122,7 +122,11 @@ function conditionIssues(g: RuleGroupType): Set<RuleIssue> {
       if (bounds.length !== 2 || [0, 1].some((i) => bounds[i] === undefined || !isValidValue(bounds[i]))) {
         issues.add("range");
       }
-    } else if (!VALUELESS_OPS.has(r.operator) && r.value === undefined) {
+    } else if (
+      (!VALUELESS_OPS.has(r.operator) && r.value === undefined) ||
+      // An empty list never matches (in) or always matches (not in).
+      ((r.operator === "in" || r.operator === "notIn") && toArray(r.value).length === 0)
+    ) {
       issues.add("value");
     }
   }

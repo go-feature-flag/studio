@@ -216,6 +216,11 @@ describe("RulesEditor compact rows", () => {
       rules: [...COND.rules, { field: "age", operator: "between", value: "10," }],
       want: "flag.wizard.ruleIssueRange",
     },
+    {
+      name: "an empty in list",
+      rules: [{ field: "plan", operator: "in", value: "" }],
+      want: "flag.wizard.ruleIssueValue",
+    },
   ];
   for (const tt of incomplete) {
     it(`summarises a collapsed rule with ${tt.name} by what is missing`, () => {
