@@ -582,6 +582,28 @@ describe("FlagDetailPage evaluate tab", () => {
     expect(ta.value).toBe('{"targetingKey":"edited"}');
   });
 
+  it("drops the edited context when another flag loads on the same page", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const { rerender } = renderPage();
+    await user.click(screen.getByRole("button", { name: "Evaluate" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: '{"targetingKey":"edited"}' },
+    });
+
+    // The route component is reused across ids, so only the flag data changes.
+    wireData({ ...makeFlag(false), id: "flag-2" });
+    rerender(
+      <MemoryRouter initialEntries={["/flags/flag-1"]}>
+        <Routes>
+          <Route path="/flags/:id" element={<FlagDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(ta.value).toBe(DEFAULT_TESTING_CONTEXT);
+  });
+
   it("seeds the context from the flagset's configured default when set", async () => {
     // Wire a flagset that has a configured default testing context.
     h.useCustomImpl = (args: { url: string }) => {

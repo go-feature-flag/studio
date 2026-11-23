@@ -196,8 +196,12 @@ export function FlagDetailPage() {
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState<SectionKey>("targeting");
-  // Evaluate-tab context edits; null until edited so the flagset default applies.
-  const [evalContext, setEvalContext] = useState<string | null>(null);
+  // Evaluate-tab context edits, tagged with their flag: this page is reused when
+  // the route id changes, and another flag must start from its own default.
+  const [evalContext, setEvalContext] = useState<{
+    flagId: string;
+    value: string;
+  } | null>(null);
   // Custom metadata = the non-reserved keys (owner/description live in Settings).
   const customMetadataInitial = useMemo(
     () =>
@@ -705,12 +709,15 @@ export function FlagDetailPage() {
                 {section === "evaluate" && (
                   <div>
                     <EvaluatePanel
+                      key={flag.id}
                       flagId={flag.id}
                       isDirty={canEdit && form.isDirty}
                       saving={saving}
                       saveAndThen={saveFlag}
                       defaultContext={
-                        evalContext ??
+                        (evalContext?.flagId === flag.id
+                          ? evalContext.value
+                          : null) ??
                         (flagset?.defaultTestingEvaluationContext
                           ? JSON.stringify(
                               flagset.defaultTestingEvaluationContext,
@@ -719,7 +726,9 @@ export function FlagDetailPage() {
                             )
                           : DEFAULT_TESTING_CONTEXT)
                       }
-                      onContextChange={setEvalContext}
+                      onContextChange={(value) =>
+                        setEvalContext({ flagId: flag.id, value })
+                      }
                     />
                   </div>
                 )}
