@@ -126,6 +126,7 @@ export function TagInput({
 
   return (
     <CommandPrimitive shouldFilter={false} className="relative">
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- mouse shortcut to focus the input; keyboard users tab to it directly */}
       <div
         className={cn(
           "flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-sm shadow-xs",
@@ -184,6 +185,7 @@ export function TagInput({
       )}
 
       {showDropdown && (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- mouse-only focus guard; keyboard selection goes through cmdk
         <div
           className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
           onMouseDown={(e) => {

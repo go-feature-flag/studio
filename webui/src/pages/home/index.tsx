@@ -217,6 +217,7 @@ function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
         <Input placeholder={t("home.jump")} className="pl-8" />
       </CommandPrimitive.Input>
       {open && s && (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- mouse-only focus guard; keyboard selection goes through cmdk
         <div
           className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md"
           onMouseDown={(e) => {
