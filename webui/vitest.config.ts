@@ -14,6 +14,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Run refine through Vite like app code. Left external, @refinedev/react-router
+    // loads its own react-router instance and can't see the stories' MemoryRouter.
+    server: { deps: { inline: [/@refinedev\//] } },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
