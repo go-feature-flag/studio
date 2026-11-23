@@ -299,15 +299,13 @@ export function RulesEditor({
                   <CollapsibleTrigger asChild>
                     <button
                       type="button"
-                      className="flex w-full items-center gap-1.5 rounded-b-md border-t border-destructive/30 bg-destructive/5 px-3 py-1 text-left text-xs text-destructive"
+                      className="flex w-full cursor-pointer items-center gap-1.5 rounded-b-md border-t border-destructive/30 bg-destructive/5 px-3 py-1 text-left text-xs text-destructive"
                     >
                       <AlertTriangleIcon className="h-3.5 w-3.5 shrink-0" />
                       <span className="min-w-0 flex-1">
                         {issues.map((k) => t(ISSUE_KEYS[k])).join(" · ")}
                       </span>
-                      <span className="shrink-0 font-medium underline underline-offset-2">
-                        {t("flag.wizard.ruleFix")}
-                      </span>
+                      <Badge variant="destructive">{t("flag.wizard.ruleFix")}</Badge>
                     </button>
                   </CollapsibleTrigger>
                 )}
