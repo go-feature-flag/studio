@@ -205,6 +205,26 @@ describe("RulesEditor compact rows", () => {
     });
   }
 
+  const incomplete = [
+    {
+      name: "an unset value",
+      rules: [{ field: "targetingKey", operator: "=", value: undefined }],
+      want: "flag.wizard.ruleIssueValue",
+    },
+    {
+      name: "a half-filled range next to a complete condition",
+      rules: [...COND.rules, { field: "age", operator: "between", value: "10," }],
+      want: "flag.wizard.ruleIssueRange",
+    },
+  ];
+  for (const tt of incomplete) {
+    it(`summarises a collapsed rule with ${tt.name} by what is missing`, () => {
+      render(<Harness initial={[makeRule("beta", { query: { combinator: "and", rules: tt.rules } })]} />);
+      expect(edit("beta")).toHaveAccessibleDescription(`${tt.want}. flag.wizard.then on`);
+      expect(within(edit("beta")).getByTitle(tt.want)).toBeInTheDocument();
+    });
+  }
+
   it("starts collapsed with a one-line summary", () => {
     render(
       <Harness

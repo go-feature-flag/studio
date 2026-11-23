@@ -54,9 +54,12 @@ const ISSUE_KEYS: Record<RuleIssue, string> = {
 };
 
 // Plain-language condition for the collapsed rule row. An empty group would
-// format as "1 is 1", so it gets its own label.
-function conditionText(t: Tr, query: RuleGroupType): string {
+// format as "1 is 1", an unset value as 'undefined', and a half-filled range
+// is dropped, so those show what is missing instead.
+function conditionText(t: Tr, query: RuleGroupType, issues: RuleIssue[]): string {
   if (query.rules.length === 0) return t("flag.wizard.ruleNoCondition");
+  const missing = issues.find((k) => k === "value" || k === "range");
+  if (missing) return t(ISSUE_KEYS[missing]);
   return formatQuery(query, "natural_language");
 }
 
@@ -206,7 +209,7 @@ export function RulesEditor({
             const invalid = issues.length > 0;
             const rangeIssue = issues.includes("range");
             const rangeIssueId = `${summaryId}-${r.id}-range`;
-            const condition = conditionText(t, r.query) || (rangeIssue ? t(ISSUE_KEYS.range) : "");
+            const condition = conditionText(t, r.query, issues);
             return (
               <Collapsible
                 key={r.id}
