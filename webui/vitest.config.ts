@@ -1,3 +1,5 @@
+import { storybookTest } from "@storybook/addon-vitest/vitest-plugin";
+import { playwright } from "@vitest/browser-playwright";
 import { coverageConfigDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -10,13 +12,6 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: ["./src/test/setup.ts"],
-    css: false,
-    // Run refine through Vite like app code. Left external, @refinedev/react-router
-    // loads its own react-router instance and can't see the stories' MemoryRouter.
-    server: { deps: { inline: [/@refinedev\//] } },
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],
@@ -33,5 +28,36 @@ export default defineConfig({
         "src/index.tsx",
       ],
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          environment: "jsdom",
+          globals: true,
+          setupFiles: ["./src/test/setup.ts"],
+          css: false,
+          // Run refine through Vite like app code. Left external, @refinedev/react-router
+          // loads its own react-router instance and can't see the stories' MemoryRouter.
+          server: { deps: { inline: [/@refinedev\//] } },
+        },
+      },
+      {
+        // Every story rendered in real Chromium, with the a11y addon running axe on it.
+        extends: true,
+        plugins: [
+          storybookTest({ configDir: path.join(__dirname, ".storybook") }),
+        ],
+        test: {
+          name: "storybook",
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright(),
+            instances: [{ browser: "chromium" }],
+          },
+        },
+      },
+    ],
   },
 });
