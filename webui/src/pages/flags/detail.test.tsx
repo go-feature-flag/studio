@@ -567,6 +567,21 @@ describe("FlagDetailPage evaluate tab", () => {
     expect(ta.value).toBe(DEFAULT_TESTING_CONTEXT);
   });
 
+  it("keeps an edited context when switching tabs and coming back", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderPage();
+    await user.click(screen.getByRole("button", { name: "Evaluate" }));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: '{"targetingKey":"edited"}' },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("button", { name: "Evaluate" }));
+
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    expect(ta.value).toBe('{"targetingKey":"edited"}');
+  });
+
   it("seeds the context from the flagset's configured default when set", async () => {
     // Wire a flagset that has a configured default testing context.
     h.useCustomImpl = (args: { url: string }) => {

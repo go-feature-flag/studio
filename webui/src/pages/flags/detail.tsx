@@ -196,6 +196,8 @@ export function FlagDetailPage() {
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
   const [section, setSection] = useState<SectionKey>("targeting");
+  // Evaluate-tab context edits; null until edited so the flagset default applies.
+  const [evalContext, setEvalContext] = useState<string | null>(null);
   // Custom metadata = the non-reserved keys (owner/description live in Settings).
   const customMetadataInitial = useMemo(
     () =>
@@ -708,14 +710,16 @@ export function FlagDetailPage() {
                       saving={saving}
                       saveAndThen={saveFlag}
                       defaultContext={
-                        flagset?.defaultTestingEvaluationContext
+                        evalContext ??
+                        (flagset?.defaultTestingEvaluationContext
                           ? JSON.stringify(
                               flagset.defaultTestingEvaluationContext,
                               null,
                               2,
                             )
-                          : DEFAULT_TESTING_CONTEXT
+                          : DEFAULT_TESTING_CONTEXT)
                       }
+                      onContextChange={setEvalContext}
                     />
                   </div>
                 )}
