@@ -64,7 +64,7 @@ export const ShadcnUiValueEditor = (allProps: ShadcnUiValueEditorProps) => {
             value={valueAsArray[i] ?? ""}
             disabled={disabled}
             className={standardClassnames.valueListItem}
-            placeholder={placeHolderText}
+            placeholder={i === 0 ? "Lower bound" : "Upper bound"}
             onChange={(e) => multiValueHandler(e.target.value, i)}
             {...extraProps}
           />
