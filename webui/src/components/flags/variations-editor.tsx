@@ -30,8 +30,9 @@ export function VariationsEditor({
       ...vs,
       { id: nextId(), name: `treatment-${vs.length}`, value: "" },
     ]);
+  // The remove button is disabled at 2 variations, so no guard is needed here.
   const remove = (id: number) =>
-    setVariations((vs) => (vs.length > 2 ? vs.filter((v) => v.id !== id) : vs));
+    setVariations((vs) => vs.filter((v) => v.id !== id));
   const nameCounts = variations.reduce<Record<string, number>>((m, v) => {
     m[v.name] = (m[v.name] ?? 0) + 1;
     return m;

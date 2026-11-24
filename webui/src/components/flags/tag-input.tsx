@@ -72,9 +72,9 @@ export function TagInput({
       setDraft("");
       return;
     }
-    // At the cap or over the length limit: keep the draft so the user doesn't
-    // lose their typing, and let the hint below explain why nothing was added.
-    if (value.length >= maxTags) return;
+    // Over the length limit: keep the draft so the user doesn't lose their
+    // typing, and let the hint below explain why nothing was added. The tag cap
+    // needs no check: at capacity the input and dropdown aren't rendered.
     if (runeLength(tag) > maxTagLength) return;
     onChange([...value, tag]);
     setDraft("");

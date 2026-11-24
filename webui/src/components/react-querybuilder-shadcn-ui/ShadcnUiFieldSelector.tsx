@@ -30,12 +30,12 @@ function flattenOptions(list: OptionList): FieldOption[] {
   if (isOptionGroupArray(list)) {
     for (const group of list) {
       for (const o of group.options) {
-        out.push({ name: o.name ?? "", label: String(o.label ?? o.name ?? "") });
+        out.push({ name: o.name, label: o.label });
       }
     }
-  } else if (Array.isArray(list)) {
+  } else {
     for (const o of list) {
-      out.push({ name: o.name ?? "", label: String(o.label ?? o.name ?? "") });
+      out.push({ name: o.name, label: o.label });
     }
   }
   return out;

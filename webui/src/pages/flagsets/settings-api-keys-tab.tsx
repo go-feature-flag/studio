@@ -211,7 +211,7 @@ export function ApiKeysTab({
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : ""}
+                    {new Date(k.createdAt).toLocaleDateString()}
                     {k.createdByName ? ` · ${k.createdByName}` : ""}
                   </TableCell>
                   {canManage && (

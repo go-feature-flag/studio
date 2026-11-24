@@ -182,7 +182,7 @@ function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
-  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const s = q.trim();
   const needle = s.toLowerCase();
@@ -223,7 +223,7 @@ function JumpToFlag({ flags }: { flags: FlagInstance[] }) {
           onMouseDown={(e) => {
             // Keep the input focused through the click.
             e.preventDefault();
-            if (blurTimer.current) clearTimeout(blurTimer.current);
+            clearTimeout(blurTimer.current);
           }}
         >
           <CommandList className="max-h-72">

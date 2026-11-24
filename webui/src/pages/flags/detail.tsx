@@ -152,7 +152,6 @@ export function FlagDetailPage() {
   });
   const createdByName = useMemo(() => {
     const list = versionsQuery.data?.data?.data ?? [];
-    if (!list.length) return "";
     const first = [...list].sort(
       (a, b) => a.versionNumber - b.versionNumber,
     )[0];

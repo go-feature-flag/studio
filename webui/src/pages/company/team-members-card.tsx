@@ -132,7 +132,6 @@ export function TeamMembersCard({
   });
 
   const onChangeRole = (m: TeamMember, role: Role) => {
-    if (role === m.role) return;
     customMutate(
       {
         url: `${membersUrl}/${m.userId}`,

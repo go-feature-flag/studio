@@ -229,7 +229,7 @@ export function ReviewStep({
   const preview = useMemo(() => {
     // Mirror the submit path, which keys the flag by `name.trim()`, so the
     // preview never shows a key that differs from what gets created.
-    const goff = { [name.trim() || "flag-name"]: payload };
+    const goff = { [name.trim()]: payload };
     return format === "yaml"
       ? yamlDump(goff, { indent: 2, lineWidth: -1 })
       : JSON.stringify(goff, null, 2);

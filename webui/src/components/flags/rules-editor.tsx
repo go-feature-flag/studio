@@ -153,7 +153,7 @@ export function RulesEditor({
         id,
         name: nextRuleName(rs.map((r) => r.name)),
         query: newQuery(),
-        outcome: newOutcome(variationNames[0] ?? ""),
+        outcome: newOutcome(variationNames[0]),
       },
     ]);
     refocusId.current = id;
