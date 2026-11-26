@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.paths.outputs.server }}
+      webui: ${{ steps.paths.outputs.webui }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: paths
+        with:
+          # Compare the checked-out merge commit with its base, including on fork PRs.
+          token: ''
+          base: ${{ github.event.before || github.event.pull_request.base.sha }}
+          filters: |
+            server:
+              - 'server/**'
+              - '.github/workflows/server.yml'
+              - '.github/workflows/ci.yml'
+              - 'codecov.yml'
+              - 'Makefile'
+              - '.golangci.yml'
+            webui:
+              - 'webui/**'
+              - '.github/workflows/webui.yml'
+              - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/workflows/**'
+
+      - name: Validate GitHub Actions workflows
+        if: steps.paths.outputs.workflows == 'true'
+        uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+
+  server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    uses: ./.github/workflows/server.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  webui:
+    needs: changes
+    if: needs.changes.outputs.webui == 'true'
+    uses: ./.github/workflows/webui.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  ci-passed:
+    name: CI passed
+    needs: [changes, server, webui]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: >-
+            ${{ needs.changes.outputs.server == 'false' && 'server' || '' }},
+            ${{ needs.changes.outputs.webui == 'false' && 'webui' || '' }}

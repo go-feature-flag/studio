@@ -1,21 +1,10 @@
 name: server
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '.github/workflows/server.yml'
-      - 'codecov.yml'
-      - 'Makefile'
-      - '.golangci.yml'
-  pull_request:
-    paths:
-      - 'server/**'
-      - '.github/workflows/server.yml'
-      - 'codecov.yml'
-      - 'Makefile'
-      - '.golangci.yml'
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 
 jobs:
   build-test:

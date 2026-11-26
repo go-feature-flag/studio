@@ -1,15 +1,10 @@
 name: webui
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'webui/**'
-      - '.github/workflows/webui.yml'
-  pull_request:
-    paths:
-      - 'webui/**'
-      - '.github/workflows/webui.yml'
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 
 defaults:
   run:
