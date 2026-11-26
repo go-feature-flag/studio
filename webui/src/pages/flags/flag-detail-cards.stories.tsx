@@ -4,6 +4,7 @@ import { FLAG } from "../../../.storybook/fixtures";
 import { i18nProvider } from "@/providers/i18n";
 import {
   DefaultRuleCard,
+  ScheduleCard,
   SettingsCard,
   TargetingCard,
   VariationsCard,
@@ -106,6 +107,29 @@ export const SettingsEmpty: Story = {
       flagsetId="fs-web"
       flagsetName=""
       createdByName=""
+    />
+  ),
+};
+
+export const Schedule: Story = {
+  render: () => (
+    <ScheduleCard t={t} payload={payload} names={names} />
+  ),
+};
+export const ScheduleEmpty: Story = {
+  render: () => (
+    <ScheduleCard t={t} payload={{ ...payload, scheduledRollout: [] }} names={names} />
+  ),
+};
+export const ScheduleMoreChanges: Story = {
+  render: () => (
+    <ScheduleCard
+      t={t}
+      payload={{
+        ...payload,
+        scheduledRollout: [{ date: inDays(4), disable: true, variations: { enabled: false } }],
+      }}
+      names={names}
     />
   ),
 };

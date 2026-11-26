@@ -12,10 +12,12 @@ import {
   valueValid,
 } from "./flag-form-helpers";
 import { buildFlagPayload, hydrateForm } from "./flag-form-hydration";
+import { reconcileSchedule, scheduleStepValid } from "./flag-form-schedule";
 import type {
   FlagFormState,
   Outcome,
   Rule,
+  ScheduleStep,
   UseFlagForm,
   Variation,
 } from "./flag-form-types";
@@ -28,6 +30,7 @@ const MANAGED_KEYS = new Set([
   "defaultRule",
   "metadata",
   "trackEvents",
+  "scheduledRollout",
   "disable",
 ]);
 
@@ -78,6 +81,7 @@ export function useFlagForm(payload?: FlagPayload): UseFlagForm {
       return {
         ...s,
         variations: nextVars,
+        schedule: reconcileSchedule(s.schedule, s.rules, renames, removed, nextNames),
         defaultOutcome: reconcileOutcome(
           s.defaultOutcome,
           renames,
@@ -92,11 +96,25 @@ export function useFlagForm(payload?: FlagPayload): UseFlagForm {
     });
 
   const setRules: Dispatch<SetStateAction<Rule[]>> = (action) =>
-    setState((s) => ({
-      ...s,
-      rules:
+    setState((s) => {
+      const rules =
         typeof action === "function"
           ? (action as (p: Rule[]) => Rule[])(s.rules)
+          : action;
+      const names = s.variations.map((v) => v.name);
+      return {
+        ...s,
+        rules,
+        schedule: reconcileSchedule(s.schedule, rules, new Map(), new Set(), names),
+      };
+    });
+
+  const setSchedule: Dispatch<SetStateAction<ScheduleStep[]>> = (action) =>
+    setState((s) => ({
+      ...s,
+      schedule:
+        typeof action === "function"
+          ? (action as (p: ScheduleStep[]) => ScheduleStep[])(s.schedule)
           : action,
     }));
 
@@ -128,8 +146,11 @@ export function useFlagForm(payload?: FlagPayload): UseFlagForm {
     );
   const rulesOk = state.rules.every((r) => ruleValid(r, variationNames));
   const defaultOk = outcomeValid(state.defaultOutcome, variationNames);
+  const scheduleOk = state.schedule.every((s) =>
+    scheduleStepValid(s, state, variationNames),
+  );
   const valid =
-    variationsOk && rulesOk && defaultOk && state.customMetaValid;
+    variationsOk && rulesOk && defaultOk && scheduleOk && state.customMetaValid;
 
   const buildPayload = () => withUnmanaged(payload, buildFlagPayload(state));
   const isDirty = JSON.stringify(buildPayload()) !== baseline;
@@ -149,6 +170,7 @@ export function useFlagForm(payload?: FlagPayload): UseFlagForm {
     setVariations,
     setRules,
     setDefaultOutcome,
+    setSchedule,
     setTrackEvents,
     setDescription,
     setOwner,

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { useFlagForm } from "./use-flag-form";
-import { EMPTY_QUERY } from "./flag-form-helpers";
+import { EMPTY_QUERY, newOutcome } from "./flag-form-helpers";
+import { withServe } from "./flag-form-schedule";
 import type { Rule, Variation } from "./flag-form-types";
 import type { FlagPayload } from "@/types/api";
 
@@ -189,7 +190,7 @@ describe("useFlagForm keeps fields it does not edit", () => {
       end: "2026-12-01T00:00:00Z",
     },
     scheduledRollout: [
-      { date: "2026-11-15T00:00:00Z", defaultRule: { variation: "on" } },
+      { date: "2026-11-15T00:00:00.000Z", defaultRule: { variation: "on" } },
     ],
     bucketingKey: "accountId",
     version: "1.2.0",
@@ -213,5 +214,133 @@ describe("useFlagForm keeps fields it does not edit", () => {
   it("never sends disable, which the server rejects in the payload", () => {
     const { result } = renderForm({ ...payload, disable: true });
     expect(result.current.buildPayload()).not.toHaveProperty("disable");
+  });
+});
+
+describe("useFlagForm schedule", () => {
+  const scheduledRollout = [
+    { date: "2026-11-15T00:00:00.000Z", targeting: [{ name: "beta", variation: "off" }] },
+  ];
+  const stored: FlagPayload = { ...payload, scheduledRollout };
+
+  it("hydrates an editable schedule and is not dirty", () => {
+    const { result } = renderForm(stored);
+    expect(result.current.schedule).toHaveLength(1);
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.buildPayload().scheduledRollout).toEqual(scheduledRollout);
+  });
+
+  it("marks the form dirty when a step changes", () => {
+    const { result } = renderForm(stored);
+    act(() =>
+      result.current.setSchedule((ss) => ss.map((s) => ({ ...s, flagState: "enable" }))),
+    );
+    expect(result.current.isDirty).toBe(true);
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { ...scheduledRollout[0], disable: false },
+    ]);
+  });
+
+  it("drops a step's serve changes when it turns the flag off", () => {
+    const { result } = renderForm(stored);
+    act(() =>
+      result.current.setSchedule((ss) => ss.map((s) => ({ ...s, flagState: "disable" }))),
+    );
+    expect(result.current.valid).toBe(true);
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { date: scheduledRollout[0].date, disable: true },
+    ]);
+  });
+
+  it("saves an in-place edit as the difference from the step before", () => {
+    const { result } = renderForm(stored);
+    const beta = result.current.rules[0].id;
+    const names = result.current.variationNames;
+    act(() =>
+      result.current.setSchedule((ss) =>
+        ss.map((s) => withServe(s, "default", newOutcome("on"), result.current.defaultOutcome, names)),
+      ),
+    );
+    act(() =>
+      result.current.setSchedule((ss) =>
+        ss.map((s) => withServe(s, beta, newOutcome("on"), newOutcome("on"), names)),
+      ),
+    );
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { date: scheduledRollout[0].date, defaultRule: { percentage: { on: 100, off: 0 } } },
+    ]);
+  });
+
+  it("is invalid while a step has no change", () => {
+    const { result } = renderForm(stored);
+    act(() => result.current.setSchedule((ss) => ss.map((s) => ({ ...s, rules: [] }))));
+    expect(result.current.valid).toBe(false);
+  });
+
+  it("drops the scheduledRollout key once every step is removed", () => {
+    const { result } = renderForm(stored);
+    act(() => result.current.setSchedule([]));
+    expect(result.current.buildPayload()).not.toHaveProperty("scheduledRollout");
+  });
+
+  it("prunes changes to a removed rule", () => {
+    const { result } = renderForm(stored);
+    act(() => result.current.setRules([]));
+    expect(result.current.schedule[0].rules).toEqual([]);
+  });
+
+  it("follows a renamed rule", () => {
+    const { result } = renderForm(stored);
+    act(() => result.current.setRules((rs) => rs.map((r) => ({ ...r, name: "early" }))));
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { ...scheduledRollout[0], targeting: [{ name: "early", variation: "off" }] },
+    ]);
+  });
+
+  const keptStep = [
+    {
+      date: "2026-11-15T00:00:00.000Z",
+      variations: { on: true },
+      targeting: [{ name: "beta", variation: "off" }],
+    },
+  ];
+
+  it("renames a rule in a step with other changes", () => {
+    const { result } = renderForm({ ...payload, scheduledRollout: keptStep });
+    act(() => result.current.setRules((rs) => rs.map((r) => ({ ...r, name: "early" }))));
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { ...keptStep[0], targeting: [{ name: "early", variation: "off" }] },
+    ]);
+  });
+
+  it("drops a removed rule's changes from a step with other changes", () => {
+    const { result } = renderForm({ ...payload, scheduledRollout: keptStep });
+    act(() => result.current.setRules([]));
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { date: "2026-11-15T00:00:00.000Z", variations: { on: true } },
+    ]);
+  });
+
+  it("keeps a step that adds a rule the flag doesn't have", () => {
+    const adds = [
+      { date: "2026-11-15T00:00:00.000Z", targeting: [{ name: "new", query: "a eq 1", variation: "on" }] },
+    ];
+    const { result } = renderForm({ ...payload, scheduledRollout: adds });
+    act(() => result.current.setDescription("x"));
+    expect(result.current.buildPayload().scheduledRollout).toEqual(adds);
+  });
+
+  it("keeps other step changes, stays clean and edits around them", () => {
+    const other = [{ date: "2026-11-15T00:00:00.000Z", variations: { on: false } }];
+    const { result } = renderForm({ ...payload, scheduledRollout: other });
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.valid).toBe(true);
+    expect(result.current.buildPayload().scheduledRollout).toEqual(other);
+    act(() =>
+      result.current.setSchedule((ss) => ss.map((s) => ({ ...s, flagState: "disable" }))),
+    );
+    expect(result.current.buildPayload().scheduledRollout).toEqual([
+      { ...other[0], disable: true },
+    ]);
   });
 });

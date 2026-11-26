@@ -20,8 +20,8 @@ import { DistributionBar } from "./distribution-bar";
 import { RolloutCurve } from "./rollout-curve";
 import { variationColor } from "./variation-colors";
 import { Field } from "./flag-form-fields";
-import { clampPercentage, outcomeSum } from "./flag-form-helpers";
-import type { Outcome, ProgState, Tr } from "./flag-form-types";
+import { OUTCOME_MODES, clampPercentage, outcomeSum } from "./flag-form-helpers";
+import type { Outcome, OutcomeMode, ProgState, Tr } from "./flag-form-types";
 
 export function OutcomeEditor({
   t,
@@ -30,6 +30,7 @@ export function OutcomeEditor({
   onChange,
   disabled = false,
   isCreate = false,
+  modes = OUTCOME_MODES,
 }: {
   t: Tr;
   variationNames: string[];
@@ -37,6 +38,7 @@ export function OutcomeEditor({
   onChange: (o: Outcome) => void;
   disabled?: boolean;
   isCreate?: boolean;
+  modes?: OutcomeMode[];
 }) {
   const id = useId();
   const set = (p: Partial<Outcome>) => onChange({ ...outcome, ...p });
@@ -58,11 +60,7 @@ export function OutcomeEditor({
         className="w-full capitalize"
         value={outcome.mode}
         onChange={(mode) => set({ mode })}
-        options={[
-          { value: "single", label: t("flag.wizard.single") },
-          { value: "percentage", label: t("flag.wizard.percentage") },
-          { value: "progressive", label: t("flag.wizard.progressive") },
-        ]}
+        options={modes.map((m) => ({ value: m, label: t(`flag.wizard.${m}`) }))}
       />
       <div className="mt-3">
         {outcome.mode === "single" && (
