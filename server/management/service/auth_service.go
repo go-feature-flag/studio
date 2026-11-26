@@ -130,8 +130,8 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 // Exchange completes the login: it redeems the code with the PKCE verifier,
 // checks the ID token and its nonce, and upserts the user. verifier and nonce
 // are required; an empty one would silently disable that protection. A login
-// the IdP side refused or got wrong is ErrLoginRejected; anything else is a
-// server failure.
+// the IdP side refused or got wrong is ErrLoginRejected; an email already bound
+// to another OIDC subject is ErrForbidden; anything else is a server failure.
 func (s *AuthService) Exchange(ctx context.Context, code, verifier, nonce string) (*model.User, string, error) {
 	if verifier == "" || nonce == "" {
 		return nil, "", rejected("pkce verifier and nonce are required")
@@ -179,6 +179,9 @@ func (s *AuthService) Exchange(ctx context.Context, code, verifier, nonce string
 	})
 	if errors.Is(err, repository.ErrMissingIdentity) {
 		return nil, "", fmt.Errorf("%w: %w", ErrLoginRejected, err)
+	}
+	if errors.Is(err, repository.ErrIdentityMismatch) {
+		return nil, "", &publicError{kind: ErrForbidden, msg: "account is linked to another identity", cause: err}
 	}
 	if err != nil {
 		return nil, "", err

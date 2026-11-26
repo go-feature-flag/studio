@@ -83,6 +83,9 @@ func (h *AuthHandler) Callback(c *echo.Context) error {
 		if errors.Is(err, service.ErrLoginRejected) {
 			return badRequest(c, "login failed")
 		}
+		if errors.Is(err, service.ErrForbidden) {
+			return forbidden(c, service.PublicMessage(err))
+		}
 		return internal(c, "login failed")
 	}
 	session := h.cookie(h.sessionCookie, jwtStr) //nolint:gosec // Secure: see cookie()

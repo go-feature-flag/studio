@@ -147,6 +147,12 @@ func TestAuthHandlerCallback(t *testing.T) {
 	broken, err := repository.NewDB(t.Context(), config.DBConfig{URL: db.Pool.Config().ConnString()})
 	require.NoError(t, err)
 	broken.Close()
+	// An account bound to the IdP's previous subject, as after recreating the
+	// Keycloak container against an existing database.
+	users := repository.NewUserRepo(db)
+	_, err = users.UpsertFromOIDC(t.Context(), repository.OIDCLogin{Email: "taken@acme.com", Sub: "previous-sub"})
+	require.NoError(t, err)
+	rebound := newAuthService(t, authConfig(fakeOIDC(t, "taken@acme.com")), users)
 
 	rejected := []struct {
 		name, query, cookie string
@@ -166,6 +172,8 @@ func TestAuthHandlerCallback(t *testing.T) {
 			http.StatusBadRequest, "login failed"},
 		{"database failure is a 500, not the user's fault", "state=abc&code=" + code, validCookie,
 			newAuthService(t, cfg, repository.NewUserRepo(broken)), http.StatusInternalServerError, "login failed"},
+		{"email bound to another OIDC subject", "state=abc&code=" + code, validCookie, rebound,
+			http.StatusForbidden, "account is linked to another identity"},
 	}
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {

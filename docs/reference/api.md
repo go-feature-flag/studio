@@ -16,7 +16,7 @@ flagset).
 | Route | |
 |---|---|
 | `GET /auth/login` | Redirects the browser to the identity provider. Sets a short-lived state cookie (state, PKCE verifier, nonce). |
-| `GET /auth/callback` | The provider's redirect target. Checks state, PKCE and nonce, creates or updates the user, sets the session cookie and redirects to `auth.postLoginRedirect`. Answers 400 for a refused or invalid login. |
+| `GET /auth/callback` | The provider's redirect target. Checks state, PKCE and nonce, creates or updates the user, sets the session cookie and redirects to `auth.postLoginRedirect`. Answers 400 for a refused or invalid login, and 403 when the email is already linked to another identity (e.g. the identity provider was re-provisioned against an existing database). |
 | `POST /auth/logout`, `POST /api/v1/auth/logout` | Ends every session of the user (copied tokens included) and clears the cookie. Works without a valid session. |
 | `GET /api/v1/auth/me` | The current user, their company and team memberships. |
 | `GET /api/v1/config` | Public settings the web UI reads before login. |

@@ -492,21 +492,28 @@ func TestRandomState(t *testing.T) {
 
 func TestExchangeErrors(t *testing.T) {
 	users := repository.NewUserRepo(testutil.StartPostgres(t))
+	// Bound to the IdP's previous sub, as after recreating the Keycloak container.
+	_, err := users.UpsertFromOIDC(t.Context(), repository.OIDCLogin{Email: "bound@acme.com", Sub: "old-sub"})
+	require.NoError(t, err)
 	tests := []struct {
 		name    string
 		claims  string
 		wantErr string
+		wantIs  error
 	}{
-		{"email claim missing", `{"sub":"s6","email_verified":true}`, "email claim missing"},
-		{"claims of the wrong type", `{"sub":"s8","email":42}`, "decode claims"},
-		{"sub missing", `{"email":"nosub@acme.com","email_verified":true}`, repository.ErrMissingIdentity.Error()},
+		{"email claim missing", `{"sub":"s6","email_verified":true}`, "email claim missing", ErrLoginRejected},
+		{"claims of the wrong type", `{"sub":"s8","email":42}`, "decode claims", ErrLoginRejected},
+		{"sub missing", `{"email":"nosub@acme.com","email_verified":true}`,
+			repository.ErrMissingIdentity.Error(), ErrLoginRejected},
+		{"email bound to another sub", `{"sub":"new-sub","email":"bound@acme.com","email_verified":true}`,
+			"account is linked to another identity", ErrForbidden},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := authExchangeService(t, users, tt.claims)
 			_, _, err := s.Exchange(t.Context(), "code", "verifier", testNonce)
 			assert.ErrorContains(t, err, tt.wantErr)
-			assert.ErrorIs(t, err, ErrLoginRejected, "an IdP-side problem, not a server failure")
+			assert.ErrorIs(t, err, tt.wantIs, "a client error, not a server failure")
 		})
 	}
 

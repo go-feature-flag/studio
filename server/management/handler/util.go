@@ -85,6 +85,10 @@ func internal(c *echo.Context, msg string) error {
 	return c.JSON(http.StatusInternalServerError, model.APIResponse{Message: msg})
 }
 
+func forbidden(c *echo.Context, msg string) error {
+	return c.JSON(http.StatusForbidden, model.APIResponse{Message: msg})
+}
+
 // writeServiceError answers err. Messages come only from
 // service.PublicMessage or fixed text, never err.Error(), so wrapped
 // internals can't leak; opMsg must be a static description of the operation.
