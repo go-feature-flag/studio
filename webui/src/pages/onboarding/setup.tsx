@@ -26,7 +26,7 @@ import { CompanyForm, type CompanyFormValues } from "./company-form";
 
 type StepStatus = "pending" | "running" | "done" | "error";
 
-const STEPS = ["company", "team", "flagset", "apiKey", "flag"] as const;
+const STEPS = ["company", "team", "flagset", "apiKey", "flag", "relayProxySecret"] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,7 +64,7 @@ function StepIcon({ status }: { status: StepStatus }) {
 
 // OnboardingSetupPage is the mono company first-login flow for the super
 // admin: name the company, then create company → team → flagset → API key →
-// first flag in sequence. minStepMs paces each step so progress is readable.
+// first flag → relay proxy secret in sequence. minStepMs paces each step so progress is readable.
 export function OnboardingSetupPage({ minStepMs = 700 }: { minStepMs?: number }) {
   const t = useTranslate();
   const navigate = useNavigate();
@@ -120,6 +120,10 @@ export function OnboardingSetupPage({ minStepMs = 700 }: { minStepMs?: number })
             defaultRule: { variation: "disabled" },
           },
         });
+        return;
+      case "relayProxySecret":
+        // Rotating is harmless here: no relay proxy uses the secret yet, so a retry can post again.
+        await post(`/companies/${c.companyId}/relay-proxy-secret`, {});
     }
   };
 

@@ -128,8 +128,9 @@ origin is the only one allowed to call the API with credentials (CORS) and to se
 GO Feature Flag relay proxies (v1.59.0 or later) can load their flagsets from Studio, so
 flag changes reach them without a configuration file to maintain.
 
-1. As a company admin, open **Company → Relay proxy** and generate the company's relay proxy
-   secret (`POST /api/v1/companies/{companyId}/relay-proxy-secret`).
+1. As a company admin, open **Company → Relay proxy**. Onboarding already generated the
+   company's relay proxy secret; generate one there otherwise
+   (`POST /api/v1/companies/{companyId}/relay-proxy-secret`).
 2. Copy the snippet shown there into the relay proxy's `goff-proxy.yaml`, and remove any
    `flagSets` key from that file (the relay proxy refuses both together):
 

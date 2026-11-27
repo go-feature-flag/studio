@@ -668,7 +668,8 @@
         "team": "Creating team",
         "flagset": "Creating default flagset",
         "apiKey": "Creating my first API key",
-        "flag": "Creating my first feature flag"
+        "flag": "Creating my first feature flag",
+        "relayProxySecret": "Creating the relay proxy secret"
       },
       "doNotClose": "Do not close this browser window until setup is complete.",
       "error": "Setup failed",
