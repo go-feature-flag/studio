@@ -290,3 +290,29 @@ func TestLoginRateLimitBehindProxy(t *testing.T) {
 		})
 	}
 }
+
+func TestSchemeBehindProxy(t *testing.T) {
+	tests := []struct {
+		name, peer, url, forwarded, want string
+		trusted                          []string
+	}{
+		{"trusted public proxy", "203.0.113.10:4000", "http://studio.example", "https", "https", []string{"203.0.113.0/24"}},
+		{"trusted private proxy", "10.0.0.5:4000", "http://studio.example", "https", "https", []string{"10.0.0.0/8"}},
+		{"untrusted public peer", "198.51.100.5:4000", "http://studio.example", "https", "http", []string{"203.0.113.0/24"}},
+		{"untrusted private peer", "192.168.1.5:4000", "http://studio.example", "https", "http", []string{"10.0.0.0/8"}},
+		{"no trusted proxies", "127.0.0.1:4000", "http://studio.example", "https", "http", nil},
+		{"direct TLS", "198.51.100.5:4000", "https://studio.example", "http", "https", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := platformServer(config.Config{Server: config.ServerConfig{TrustedProxies: tt.trusted}})
+			e.GET("/scheme", func(c *echo.Context) error { return c.String(http.StatusOK, c.Scheme()) })
+			req := httptest.NewRequest(http.MethodGet, tt.url+"/scheme", nil)
+			req.RemoteAddr = tt.peer
+			req.Header.Set(echo.HeaderXForwardedProto, tt.forwarded)
+			rec := platformServe(e, req)
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tt.want, rec.Body.String())
+		})
+	}
+}

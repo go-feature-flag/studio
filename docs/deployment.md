@@ -94,6 +94,10 @@ Terminate TLS at the proxy and forward to the server over http.
   Behind a proxy the socket address is the proxy's, so every user would share one bucket.
   List the proxy ranges in `server.trustedProxies`; the server then reads the client from
   `X-Forwarded-For`, trusting only hops inside those ranges.
+- **Scheme and host.** Preserve the original `Host` and overwrite `X-Forwarded-Proto`
+  with the external scheme (`https` when terminating TLS). Studio accepts forwarded
+  scheme headers only from `server.trustedProxies`; configure those ranges for private
+  and public proxies alike. Relay proxy retriever URLs use this scheme and host.
 - **HSTS.** With `auth.cookieSecure` on, the server sends `Strict-Transport-Security`.
 
 ## Sessions and cookies

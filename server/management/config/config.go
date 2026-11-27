@@ -30,6 +30,8 @@ type ServerConfig struct {
 	// When set, the client IP (rate limits, logs) is the nearest
 	// X-Forwarded-For hop outside these ranges; when empty, it is the socket
 	// address, which behind a proxy is the proxy's for every client.
+	// Forwarded scheme headers are accepted only from these ranges, so relay
+	// proxy retriever URLs preserve HTTPS when TLS terminates at the proxy.
 	TrustedProxies []string `koanf:"trustedProxies"`
 }
 

@@ -40,7 +40,7 @@ type Services struct {
 func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo {
 	e := echo.New()
 	e.Logger = log
-	e.IPExtractor = ipExtractor(cfg.Server)
+	configureProxyExtractors(e, cfg.Server)
 	// First, so the route reaches otelhttp before any middleware swaps the request.
 	e.Use(middleware.RouteTelemetry())
 	// Tag every log line written through c.Logger() with the request id.
@@ -155,20 +155,20 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	return e
 }
 
-// ipExtractor resolves c.RealIP(). Without trusted proxies it is the socket
-// address (nil: echo's default). With them, the nearest X-Forwarded-For hop
-// outside those ranges, so a client can't spoof its IP by sending the header:
-// echo's own trust of private, loopback and link-local peers is turned off.
-func ipExtractor(cfg config.ServerConfig) echo.IPExtractor {
+// Both client IPs and generated retriever URLs must use the configured proxy
+// boundary, not Echo's implicit trust of private, loopback and link-local peers.
+func configureProxyExtractors(e *echo.Echo, cfg config.ServerConfig) {
+	e.SchemeExtractor = echo.ExtractSchemeDirect()
 	nets, _ := cfg.TrustedProxyNets() // Validate already rejected bad entries
 	if len(nets) == 0 {
-		return nil
+		return
 	}
 	opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false)}
 	for _, n := range nets {
 		opts = append(opts, echo.TrustIPRange(n))
 	}
-	return echo.ExtractIPFromXFFHeader(opts...)
+	e.IPExtractor = echo.ExtractIPFromXFFHeader(opts...)
+	e.SchemeExtractor = echo.ExtractSchemeFromHeaders(opts...)
 }
 
 // rateLimit caps each identifier (default: client IP) at perSec requests per
