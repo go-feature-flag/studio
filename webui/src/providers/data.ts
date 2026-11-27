@@ -5,7 +5,7 @@ import type {
   Pagination,
 } from "@refinedev/core";
 import { API_URL } from "./constants";
-import { apiFetch } from "./http";
+import { apiFetch, apiFetchJSON } from "./http";
 
 type Meta = MetaQuery | undefined; // uses meta.path and meta.method
 
@@ -74,12 +74,17 @@ export const dataProvider: DataProvider = {
     return { data: (body.data ?? null) as never };
   },
 
-  custom: async ({ url, method = "get", payload, headers }) => {
-    const body = await apiFetch<unknown>(url, {
+  custom: async ({ url, method = "get", payload, headers, meta }) => {
+    const init: RequestInit = {
       method: method.toUpperCase(),
       body: payload ? JSON.stringify(payload) : undefined,
       headers: headers as Record<string, string> | undefined,
-    });
+      signal: meta?.signal,
+    };
+    if (meta?.rawResponse === true) {
+      return { data: await apiFetchJSON(url, init) as never };
+    }
+    const body = await apiFetch<unknown>(url, init);
     // Paginated bodies are returned whole so callers keep total/page/pageSize.
     return { data: (body.total !== undefined ? body : body.data) as never };
   },

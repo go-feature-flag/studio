@@ -80,7 +80,7 @@ func TestCORSAllowsOnlyTheWebuiOrigin(t *testing.T) {
 	pre := platformServe(e, req)
 	assert.Equal(t, http.StatusNoContent, pre.Code)
 	assert.Equal(t, "GET,POST,PUT,PATCH,DELETE,OPTIONS", pre.Header().Get(echo.HeaderAccessControlAllowMethods))
-	assert.Equal(t, "Content-Type,Accept", pre.Header().Get(echo.HeaderAccessControlAllowHeaders))
+	assert.Equal(t, "Content-Type,Accept,Authorization", pre.Header().Get(echo.HeaderAccessControlAllowHeaders))
 }
 
 func TestCrossOriginWritesAreRejected(t *testing.T) {
@@ -103,6 +103,33 @@ func TestCrossOriginWritesAreRejected(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, post("same-origin", "").Code, "same-origin")
 	assert.Equal(t, http.StatusNoContent, post("same-site", platformWebui).Code, "trusted webui origin")
 	assert.Equal(t, http.StatusNoContent, post("", "").Code, "non-browser client")
+}
+
+func TestRelayProxyPreviewCORSPreflight(t *testing.T) {
+	e := platformServer(platformWebuiConfig())
+	tests := []struct {
+		name, origin string
+		allowed      bool
+	}{
+		{"webui", platformWebui, true},
+		{"untrusted origin", "https://evil.example", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodOptions, "/api/v1/relay-proxy/flagsets.json", nil)
+			req.Header.Set(echo.HeaderOrigin, tt.origin)
+			req.Header.Set(echo.HeaderAccessControlRequestMethod, http.MethodGet)
+			req.Header.Set(echo.HeaderAccessControlRequestHeaders, "authorization,content-type")
+			rec := platformServe(e, req)
+			if tt.allowed {
+				assert.Equal(t, http.StatusNoContent, rec.Code)
+				assert.Equal(t, tt.origin, rec.Header().Get(echo.HeaderAccessControlAllowOrigin))
+				assert.Contains(t, rec.Header().Get(echo.HeaderAccessControlAllowHeaders), echo.HeaderAuthorization)
+			} else {
+				assert.Empty(t, rec.Header().Get(echo.HeaderAccessControlAllowOrigin))
+			}
+		})
+	}
 }
 
 func TestWebuiOriginIsNormalized(t *testing.T) {

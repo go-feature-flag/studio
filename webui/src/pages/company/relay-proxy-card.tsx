@@ -37,6 +37,7 @@ import { errMessage } from "@/lib/errors";
 import { formatExactDateTime, formatRelativeTime } from "@/lib/relative-time";
 import { API_URL } from "@/providers/constants";
 import { HttpError } from "@/providers/http";
+import { RelayProxyConfigPreview } from "./relay-proxy-config-preview";
 
 // previousExpiresAt: when the secret the last rotation replaced stops working;
 // previousSecretEnd: its last 5 characters, to recognize it.
@@ -184,6 +185,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
               </div>
               <CodeBlock code={config} language="yaml" rounded={false} />
             </div>
+            <RelayProxyConfigPreview companyId={companyId} secret={secret.secret} secretCreatedAt={secret.createdAt} />
             {previousValid && (
               <Alert variant="warning">
                 <ClockIcon />

@@ -737,6 +737,15 @@
         "week": "7 days",
         "month": "30 days"
       },
+      "preview": {
+        "title": "See relay proxy flagset configuration",
+        "description": "Current configuration served to your relay proxies.",
+        "codeLabel": "Flagset configuration YAML",
+        "copy": "Copy flagset configuration",
+        "refresh": "Refresh configuration",
+        "error": "Failed to load flagset configuration",
+        "retry": "Retry"
+      },
       "rotationBlocked": "Wait for the previous secret to expire, or revoke it before rotating again.",
       "previousValid": "The previous secret <code>{{secret}}</code> stays valid until {{date}} ({{relative}}). Update your relay proxies with the secret above before then.",
       "revokePrevious": "Revoke now",

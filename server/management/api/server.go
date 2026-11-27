@@ -74,7 +74,7 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 				http.MethodGet, http.MethodPost, http.MethodPut,
 				http.MethodPatch, http.MethodDelete, http.MethodOptions,
 			},
-			AllowHeaders:  []string{echo.HeaderContentType, echo.HeaderAccept},
+			AllowHeaders:  []string{echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			ExposeHeaders: []string{echo.HeaderXRequestID},
 		}))
 		_ = cop.AddTrustedOrigin(origin) // same validation as CORS, which already panicked on a bad origin

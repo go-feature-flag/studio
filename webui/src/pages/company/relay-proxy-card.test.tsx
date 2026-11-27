@@ -61,6 +61,7 @@ describe("CompanyRelayProxyCard", () => {
   it("shows the studio snippet with the secret and copies it", async () => {
     render(<CompanyRelayProxyCard companyId={companyId} />);
     expect(h.url).toBe(secretURL);
+    expect(screen.getByRole("button", { name: "company.relayProxy.preview.title" })).toHaveAttribute("aria-expanded", "false");
     const config =
       "studio:\n" +
       `  url: ${window.location.origin}/api/v1/relay-proxy/flagsets.json\n` +
@@ -77,6 +78,7 @@ describe("CompanyRelayProxyCard", () => {
     render(<CompanyRelayProxyCard companyId={companyId} />);
     expect(screen.getByText("company.relayProxy.noSecret")).toBeInTheDocument();
     expect(screen.queryByText("goff-proxy.yaml")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "company.relayProxy.preview.title" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.generate" }));
     const [vars, callbacks] = lastMutate();

@@ -223,3 +223,28 @@ describe("dataProvider getOne/deleteOne", () => {
     });
   }
 });
+
+
+describe("raw JSON custom requests", () => {
+  it("returns the complete relay proxy response and sends bearer authentication", async () => {
+    const config = { flagSets: [{ name: "production", apiKeys: ["key-1"], customSetting: { enabled: true } }] };
+    let authorization: string | null = null;
+    server.use(http.get(`${API_URL}/relay-proxy/flagsets.json`, ({ request }) => {
+      authorization = request.headers.get("authorization");
+      return HttpResponse.json(config);
+    }));
+    const result = await dataProvider.custom!({
+      url: `${API_URL}/relay-proxy/flagsets.json`, method: "get",
+      headers: { Authorization: "Bearer goff_rp_current" }, meta: { rawResponse: true },
+    });
+    expect(result.data).toEqual(config);
+    expect(authorization).toBe("Bearer goff_rp_current");
+  });
+
+  it("reports invalid JSON instead of displaying an empty configuration", async () => {
+    server.use(http.get(`${API_URL}/relay-proxy/flagsets.json`, () => new HttpResponse("not JSON")));
+    await expect(dataProvider.custom!({
+      url: `${API_URL}/relay-proxy/flagsets.json`, method: "get", meta: { rawResponse: true },
+    })).rejects.toThrow("Response is not valid JSON");
+  });
+});

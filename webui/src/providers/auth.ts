@@ -99,7 +99,8 @@ export const authProvider: AuthProvider = {
   },
 
   onError: async (error) => {
-    if (error instanceof HttpError && error.status === 401) {
+    // A rejected relay proxy credential says nothing about the administrator's session.
+    if (error instanceof HttpError && error.status === 401 && error.authMode === "session") {
       cachedUser = null;
       cachedMembership = null;
       cachedCompany = null;
