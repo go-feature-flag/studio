@@ -9,7 +9,8 @@ Known follow-ups, most important first. Each item is tagged with the area it tou
 
 ## P0 — Security holes and deploy blockers
 
-_Nothing open._
+- [ ] **[Relay proxy] Accept empty remote flagset configurations upstream before relying on final-key revocation.** Studio returns `{"flagSets":[]}` when the last keyed flagset is removed or its last key is revoked. GO Feature Flag v1.59.0 and the reviewed latest image reject that document and retain the previous flagset and API keys, allowing cached flag evaluations with a revoked key. Add upstream support for empty Studio mode that clears running clients/key mappings, then cover last-key and last-flagset removal in Studio's real relay-proxy integration test and require the fixed relay version.
+- [ ] **[Relay proxy] Apply API-key revocations independently of pending settings changes upstream.** After a settings/notifier edit, the relay proxy rejects updates to that flagset's API keys as part of the unsupported settings change, so revoked keys remain usable until restart. Fix upstream reconciliation to update key routing while retaining startup settings; add an integration regression and require the fixed version. Studio's notices now document the limitation; restart affected relay proxies before relying on revocation.
 
 ## P1 — Correctness bugs
 

@@ -530,7 +530,7 @@
       "saved": "Changes saved",
       "restartRequired": {
         "title": "Restart your relay proxies",
-        "description": "Running relay proxies keep the previous settings of this flagset until they restart. Flag changes, API keys and renames apply without a restart."
+        "description": "Restart relay proxies to apply these settings or notifier changes. Until then, API-key updates for this flagset are also ignored, including revocations. Flag changes continue to apply on polling."
       },
       "unsavedChanges": "Unsaved changes",
       "saveChanges": "Save changes",
@@ -549,7 +549,7 @@
       "keysEmpty": "No API keys yet.",
       "revoke": "Revoke",
       "revokeTitle": "Revoke API key?",
-      "revokeDesc": "Revoke \"{{label}}\"? Any client using this key will stop working immediately.",
+      "revokeDesc": "Revoke \"{{label}}\"? Relay proxies apply key changes on polling. If settings or notifier changes are pending, restart them to apply the revocation. If this removes the company's final keyed flagset, stop the relay proxies: they retain their previous keys until a non-empty configuration is available.",
       "revoked": "API key revoked",
       "revokeError": "Failed to revoke API key",
       "codeSampleNoKey": "This flagset has no API key yet. Create one in the API keys tab and it will appear in the sample.",

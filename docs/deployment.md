@@ -153,8 +153,16 @@ the relay proxy can reach (a service or network name works), and keep `/api/v1/r
 reachable through your reverse proxy.
 
 Flag changes reach relay proxies on their next poll of each flagset. A running relay proxy
-also applies new or removed flagsets and API keys, but a change to a flagset's settings or
-notifiers only applies when it restarts.
+also applies new or removed flagsets and API keys, with two current relay-proxy limitations:
+
+- A change to a flagset's settings or notifiers only applies after restart. While such a
+  change is pending, API-key updates for that flagset are also ignored, including revocations.
+  Restart affected relay proxies before relying on those key changes.
+- An empty flagset list is rejected. Removing the company's final keyed flagset, or revoking
+  its final API key, leaves running proxies using their previous configuration and keys.
+  Stop those proxies to prevent further evaluations; they cannot start from Studio again
+  until it has at least one flagset with an API key. The same startup requirement applies
+  to a new company.
 
 To rotate the secret without downtime, choose how long the current one stays valid (up to 30
 days) when you click **Rotate secret**. Both secrets work during that time, so update each relay
