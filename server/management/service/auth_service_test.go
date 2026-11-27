@@ -111,7 +111,9 @@ func authExchangeService(t *testing.T, users *repository.UserRepo, idClaims stri
 			idClaims = string(b)
 		}
 	}
-	idToken := "e30." + base64.RawURLEncoding.EncodeToString([]byte(idClaims)) + ".sig"
+	// go-oidc parses the header even when the signature check is skipped, so alg must be set.
+	idToken := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256"}`)) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte(idClaims)) + ".sig"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("code_verifier") != "verifier" {
 			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
@@ -530,7 +532,7 @@ func TestExchangeErrors(t *testing.T) {
 
 	t.Run("id_token fails verification", func(t *testing.T) {
 		s := authExchangeService(t, users, `{"sub":"s7","email":"v@acme.com","email_verified":true}`)
-		s.verifier = oidc.NewVerifier("https://issuer", nil, &oidc.Config{SkipClientIDCheck: true})
+		s.verifier = oidc.NewVerifier("https://issuer", &oidc.StaticKeySet{}, &oidc.Config{SkipClientIDCheck: true})
 		_, _, err := s.Exchange(t.Context(), "code", "verifier", testNonce)
 		assert.ErrorContains(t, err, "verify id_token")
 	})
