@@ -676,6 +676,12 @@ definitions:
           being accepted; absent when there is none or it expired. That secret
           itself is never returned.
         type: string
+      previousSecretEnd:
+        description: |-
+          PreviousSecretEnd is the last 5 characters of that secret, so admins
+          can tell which relay proxies still use it; set with PreviousExpiresAt.
+        example: 9c2b7
+        type: string
       secret:
         example: goff_rp_4f9c…
         type: string

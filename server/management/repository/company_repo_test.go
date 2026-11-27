@@ -212,6 +212,7 @@ func TestCompanyRepoRelayProxySecret(t *testing.T) {
 
 	first := set(acme.ID, "goff_rp_one", time.Hour)
 	assert.Nil(t, first.PreviousExpiresAt, "nothing to keep on the first rotation")
+	assert.Nil(t, first.PreviousSecretEnd)
 	got, err = repo.GetRelayProxySecret(ctx, acme.ID)
 	require.NoError(t, err)
 	assert.Equal(t, first, got)
@@ -220,6 +221,8 @@ func TestCompanyRepoRelayProxySecret(t *testing.T) {
 	second := set(acme.ID, "goff_rp_two", time.Hour)
 	require.NotNil(t, second.PreviousExpiresAt)
 	assert.WithinDuration(t, time.Now().Add(time.Hour), *second.PreviousExpiresAt, time.Minute)
+	require.NotNil(t, second.PreviousSecretEnd)
+	assert.Equal(t, "p_one", *second.PreviousSecretEnd, "only the end of goff_rp_one")
 	got, err = repo.GetRelayProxySecret(ctx, acme.ID)
 	require.NoError(t, err)
 	assert.Equal(t, second, got)
@@ -227,7 +230,9 @@ func TestCompanyRepoRelayProxySecret(t *testing.T) {
 	// Rotating again keeps goff_rp_two and revokes goff_rp_one at once.
 	set(acme.ID, "goff_rp_three", time.Hour)
 	// Without a grace period, goff_rp_three is revoked at once.
-	assert.Nil(t, set(acme.ID, "goff_rp_four", 0).PreviousExpiresAt)
+	four := set(acme.ID, "goff_rp_four", 0)
+	assert.Nil(t, four.PreviousExpiresAt)
+	assert.Nil(t, four.PreviousSecretEnd)
 	set(acme.ID, "goff_rp_five", time.Hour)
 	// goff_rp_four expires; reads ignore it from then on.
 	_, err = db.Pool.Exec(ctx, `UPDATE companies
@@ -236,6 +241,7 @@ func TestCompanyRepoRelayProxySecret(t *testing.T) {
 	got, err = repo.GetRelayProxySecret(ctx, acme.ID)
 	require.NoError(t, err)
 	assert.Nil(t, got.PreviousExpiresAt, "an expired previous secret is not mentioned")
+	assert.Nil(t, got.PreviousSecretEnd)
 	set(other.ID, "goff_rp_other", 0)
 	set(other.ID, "goff_rp_other_new", time.Hour)
 	// The previous secret of Other is revoked early.

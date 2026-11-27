@@ -102,6 +102,8 @@ func TestRoutesRelayProxyRotationGracePeriod(t *testing.T) {
 	secret := body.Data.Secret
 	require.NotNil(t, body.Data.PreviousExpiresAt)
 	assert.NotContains(t, rec.Body.String(), old, "the previous secret is never returned")
+	require.NotNil(t, body.Data.PreviousSecretEnd)
+	assert.Equal(t, old[len(old)-5:], *body.Data.PreviousSecretEnd, "only its last 5 characters")
 
 	for _, s := range []string{old, secret} {
 		assert.Equal(t, http.StatusOK, asRelayProxy("/api/v1/relay-proxy/flagsets.json", s))

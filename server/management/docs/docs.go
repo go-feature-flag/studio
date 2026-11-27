@@ -4494,6 +4494,11 @@ const docTemplate = `{
                     "description": "PreviousExpiresAt is when the secret the last rotation replaced stops\nbeing accepted; absent when there is none or it expired. That secret\nitself is never returned.",
                     "type": "string"
                 },
+                "previousSecretEnd": {
+                    "description": "PreviousSecretEnd is the last 5 characters of that secret, so admins\ncan tell which relay proxies still use it; set with PreviousExpiresAt.",
+                    "type": "string",
+                    "example": "9c2b7"
+                },
                 "secret": {
                     "type": "string",
                     "example": "goff_rp_4f9c…"

@@ -14,6 +14,9 @@ type RelayProxySecret struct {
 	// being accepted; absent when there is none or it expired. That secret
 	// itself is never returned.
 	PreviousExpiresAt *time.Time `json:"previousExpiresAt,omitempty"`
+	// PreviousSecretEnd is the last 5 characters of that secret, so admins
+	// can tell which relay proxies still use it; set with PreviousExpiresAt.
+	PreviousSecretEnd *string `json:"previousSecretEnd,omitempty" example:"9c2b7"`
 }
 
 // MaxRelayProxyPreviousSecretSeconds caps how long a rotated secret stays
