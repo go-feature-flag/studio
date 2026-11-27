@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCustom, useCustomMutation, useTranslate } from "@refinedev/core";
-import { InfoIcon, KeyRound, RefreshCw } from "lucide-react";
+import { ClockIcon, InfoIcon, KeyRound, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -23,11 +23,32 @@ import {
 import { CodeBlock } from "@/components/ui/code-block";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { errMessage } from "@/lib/errors";
-import { formatExactDateTime } from "@/lib/relative-time";
+import { formatExactDateTime, formatRelativeTime } from "@/lib/relative-time";
 import { API_URL } from "@/providers/constants";
 
-type RelayProxySecret = { secret: string; createdAt: string };
+// previousExpiresAt: when the secret the last rotation replaced stops working.
+type RelayProxySecret = { secret: string; createdAt: string; previousExpiresAt?: string };
+
+// How long a rotation keeps the current secret valid (server max: 30 days).
+const KEEP_OPTIONS = [
+  { key: "none", seconds: 0 },
+  { key: "hour", seconds: 60 * 60 },
+  { key: "day", seconds: 24 * 60 * 60 },
+  { key: "week", seconds: 7 * 24 * 60 * 60 },
+  { key: "month", seconds: 30 * 24 * 60 * 60 },
+] as const;
+const DEFAULT_KEEP = String(KEEP_OPTIONS[2].seconds);
+// setTimeout fires at once past this delay (~24.8 days).
+const MAX_TIMEOUT = 2 ** 31 - 1;
 
 // The relay proxy loads its flagSets from this URL; it must be the address the
 // relay proxy reaches Studio at, which is usually the one the browser uses.
@@ -49,21 +70,57 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
   });
   const { mutate, mutation } = useCustomMutation();
   const [confirmRotate, setConfirmRotate] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
+  const [keepSeconds, setKeepSeconds] = useState(DEFAULT_KEEP);
+  const [now, setNow] = useState(Date.now);
   const secret = (query.data?.data as RelayProxySecret | null | undefined) ?? null;
   const pending = mutation.isPending;
 
-  const generate = () =>
+  // The server stops returning an expired previous secret; this hides it on
+  // time on a page left open. Past MAX_TIMEOUT, the next load does it.
+  const previousExpiresAt = secret?.previousExpiresAt;
+  const previousValid = !!previousExpiresAt && Date.parse(previousExpiresAt) > now;
+  useEffect(() => {
+    if (!previousExpiresAt) return;
+    const delay = Date.parse(previousExpiresAt) - Date.now();
+    if (delay <= 0 || delay > MAX_TIMEOUT) return;
+    const timer = setTimeout(() => setNow(Date.now()), delay);
+    return () => clearTimeout(timer);
+  }, [previousExpiresAt]);
+
+  // The first secret has no previous one to keep: an empty body.
+  const generate = (values: { keepPreviousSeconds?: number } = {}) =>
     mutate(
-      { url, method: "post", values: {}, successNotification: false, errorNotification: false },
+      { url, method: "post", values, successNotification: false, errorNotification: false },
       {
         onSuccess: () => {
           toast.success(t("company.relayProxy.generated"));
           setConfirmRotate(false);
+          setNow(Date.now());
           query.refetch();
         },
         onError: (err) => toast.error(t("company.relayProxy.generateError"), { description: errMessage(err) }),
       },
     );
+
+  const revokePrevious = () =>
+    mutate(
+      { url: `${url}/previous`, method: "delete", values: {}, successNotification: false, errorNotification: false },
+      {
+        onSuccess: () => {
+          toast.success(t("company.relayProxy.previousRevoked"));
+          setConfirmRevoke(false);
+          query.refetch();
+        },
+        onError: (err) =>
+          toast.error(t("company.relayProxy.revokePreviousError"), { description: errMessage(err) }),
+      },
+    );
+
+  const openRotate = () => {
+    setKeepSeconds(DEFAULT_KEEP);
+    setConfirmRotate(true);
+  };
 
   const config = secret ? relayProxyConfig(secret.secret) : "";
 
@@ -86,13 +143,29 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
         ) : !secret ? (
           <div className="flex flex-col items-start gap-3">
             <p className="text-sm text-muted-foreground">{t("company.relayProxy.noSecret")}</p>
-            <Button onClick={generate} disabled={pending}>
+            <Button onClick={() => generate()} disabled={pending}>
               <KeyRound className="h-4 w-4" />
               {pending ? t("company.relayProxy.generating") : t("company.relayProxy.generate")}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {previousValid && (
+              <Alert variant="warning">
+                <ClockIcon />
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-foreground">
+                  <span>
+                    {t("company.relayProxy.previousValid", {
+                      date: formatExactDateTime(previousExpiresAt),
+                      relative: formatRelativeTime(previousExpiresAt),
+                    })}
+                  </span>
+                  <Button size="sm" variant="outline" onClick={() => setConfirmRevoke(true)}>
+                    {t("company.relayProxy.revokePrevious")}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="overflow-hidden rounded-md border">
               <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-1.5">
                 <span className="font-mono text-xs font-medium text-muted-foreground">
@@ -107,7 +180,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
               <span className="text-xs text-muted-foreground">
                 {t("company.relayProxy.createdAt", { date: formatExactDateTime(secret.createdAt) })}
               </span>
-              <Button variant="outline" onClick={() => setConfirmRotate(true)}>
+              <Button variant="outline" onClick={openRotate}>
                 <RefreshCw className="h-4 w-4" />
                 {t("company.relayProxy.rotate")}
               </Button>
@@ -122,11 +195,54 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
             <AlertDialogTitle>{t("company.relayProxy.rotateTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{t("company.relayProxy.rotateDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="relay-proxy-keep-previous">{t("company.relayProxy.keepPrevious")}</Label>
+            <Select value={keepSeconds} onValueChange={setKeepSeconds} disabled={pending}>
+              <SelectTrigger
+                id="relay-proxy-keep-previous"
+                aria-label={t("company.relayProxy.keepPrevious")}
+                className="w-full"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {KEEP_OPTIONS.map((o) => (
+                  <SelectItem key={o.key} value={String(o.seconds)}>
+                    {t(`company.relayProxy.keepOptions.${o.key}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {previousValid && (
+              <p className="text-sm text-muted-foreground">
+                {t("company.relayProxy.rotateRevokesPrevious", { date: formatExactDateTime(previousExpiresAt) })}
+              </p>
+            )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>{t("common.cancel")}</AlertDialogCancel>
             {/* A plain Button, not AlertDialogAction: the dialog stays open until the request ends. */}
-            <Button variant="destructive" onClick={generate} disabled={pending}>
+            <Button
+              variant="destructive"
+              onClick={() => generate({ keepPreviousSeconds: Number(keepSeconds) })}
+              disabled={pending}
+            >
               {pending ? t("company.relayProxy.generating") : t("company.relayProxy.rotate")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmRevoke} onOpenChange={(open) => !pending && setConfirmRevoke(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("company.relayProxy.revokePreviousTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("company.relayProxy.revokePreviousDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>{t("common.cancel")}</AlertDialogCancel>
+            <Button variant="destructive" onClick={revokePrevious} disabled={pending}>
+              {t("company.relayProxy.revokePrevious")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

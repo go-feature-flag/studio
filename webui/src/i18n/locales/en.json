@@ -728,7 +728,22 @@
       "createdAt": "Secret generated {{date}}",
       "rotate": "Rotate secret",
       "rotateTitle": "Rotate the relay proxy secret?",
-      "rotateDesc": "Relay proxies using the current secret stop syncing until their goff-proxy.yaml has the new one."
+      "rotateDesc": "Relay proxies must move to the new secret. Keep the current one working next to it while you update them, to avoid downtime.",
+      "keepPrevious": "Keep the current secret valid for",
+      "keepOptions": {
+        "none": "Revoke immediately",
+        "hour": "1 hour",
+        "day": "1 day",
+        "week": "7 days",
+        "month": "30 days"
+      },
+      "rotateRevokesPrevious": "The previous secret, still valid until {{date}}, is revoked now.",
+      "previousValid": "The previous secret stays valid until {{date}} ({{relative}}). Update your relay proxies with the secret below before then.",
+      "revokePrevious": "Revoke now",
+      "revokePreviousTitle": "Revoke the previous secret?",
+      "revokePreviousDesc": "Relay proxies still using it stop syncing right away.",
+      "previousRevoked": "Previous secret revoked",
+      "revokePreviousError": "Failed to revoke the previous secret"
     },
     "roles": {
       "admin": "Admin",

@@ -27,6 +27,19 @@ export const RelayProxy: Story = {
     },
   },
 };
+// Relative to now so the previous secret is always still valid.
+export const RelayProxyPreviousSecret: Story = {
+  args: { section: "relayProxy" },
+  parameters: {
+    data: {
+      "/companies/acme/relay-proxy-secret": {
+        secret: "goff_rp_4f9c2b7e",
+        createdAt: "2026-11-26T10:00:00Z",
+        previousExpiresAt: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+      },
+    },
+  },
+};
 export const RelayProxyNoSecret: Story = {
   args: { section: "relayProxy" },
   parameters: { data: { "/companies/acme/relay-proxy-secret": null } },
