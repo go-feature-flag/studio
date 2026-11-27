@@ -31,7 +31,16 @@ const NOTIFIER_KINDS: NotifierKind[] = ["slack", "discord", "microsoftteams", "w
 // dialog: null when closed; index null when adding a notifier of `kind`.
 type DialogState = { index: number; kind?: never } | { index: null; kind: NotifierKind } | null;
 
-export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canManage: boolean }) {
+export function NotifiersTab({
+  flagsetId,
+  canManage,
+  onSaved,
+}: {
+  flagsetId: string;
+  canManage: boolean;
+  // Notifier changes reach relay proxies only on restart; the page says so.
+  onSaved?: () => void;
+}) {
   const t = useTranslate();
   const url = `${API_URL}/flagsets/${flagsetId}/notifiers`;
   const { query } = useCustom<Notifier[]>({
@@ -49,6 +58,7 @@ export function NotifiersTab({ flagsetId, canManage }: { flagsetId: string; canM
       {
         onSuccess: () => {
           toast.success(t("flagset.settings.notifiers.saved"));
+          onSaved?.();
           setDialog(null);
           query.refetch();
         },

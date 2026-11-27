@@ -138,13 +138,16 @@ describe("NotifiersTab saving", () => {
       h.mutate.mockImplementation((_a, o: { onSuccess: () => void; onError: (e: Error) => void }) =>
         tt.ok ? o.onSuccess() : o.onError(new Error("boom")),
       );
-      render(<NotifiersTab flagsetId="fs-1" canManage />);
+      const onSaved = vi.fn();
+      render(<NotifiersTab flagsetId="fs-1" canManage onSaved={onSaved} />);
       await user().click(screen.getByRole("switch"));
       if (tt.ok) {
         expect(h.toastSuccess).toHaveBeenCalledWith(T("saved"));
+        expect(onSaved).toHaveBeenCalled();
         expect(h.refetch).toHaveBeenCalled();
       } else {
         expect(h.toastError).toHaveBeenCalledWith(T("saveError"), { description: "boom" });
+        expect(onSaved).not.toHaveBeenCalled();
       }
     });
   }

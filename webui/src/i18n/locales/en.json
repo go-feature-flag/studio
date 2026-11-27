@@ -4,6 +4,7 @@
     "save": "Save",
     "saving": "Saving...",
     "cancel": "Cancel",
+    "dismiss": "Dismiss",
     "hideTip": "Hide this tip",
     "typeToConfirm": "Type {{name}} to confirm",
     "create": "Create",
@@ -527,6 +528,10 @@
       "environmentHint": "Added to every evaluation context as \"env\", so targeting rules can use it (e.g. production). Leave empty to unset.",
       "danger": "Danger zone",
       "saved": "Changes saved",
+      "restartRequired": {
+        "title": "Restart your relay proxies",
+        "description": "Running relay proxies keep the previous settings of this flagset until they restart. Flag changes, API keys and renames apply without a restart."
+      },
       "unsavedChanges": "Unsaved changes",
       "saveChanges": "Save changes",
       "discard": "Discard",
