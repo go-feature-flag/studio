@@ -111,7 +111,8 @@ func authExchangeService(t *testing.T, users *repository.UserRepo, idClaims stri
 			idClaims = string(b)
 		}
 	}
-	idToken := "e30." + base64.RawURLEncoding.EncodeToString([]byte(idClaims)) + ".sig"
+	// {"alg":"none","typ":"JWT"}: go-oidc rejects a header without an alg even when the signature check is skipped.
+	idToken := "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." + base64.RawURLEncoding.EncodeToString([]byte(idClaims)) + ".sig"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("code_verifier") != "verifier" {
 			http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
