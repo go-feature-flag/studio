@@ -28,10 +28,10 @@ func validateName(name *string, field string) model.ValidationErrors {
 
 const maxNameLength = 120
 
-// validateConfigText trims an optional (nil: absent) free-form value written
-// into goff-proxy.yaml and rejects control characters, which would only break
-// or smuggle lines into that file, and values over maxLen characters. Empty
-// is allowed: it unsets the option.
+// validateConfigText trims an optional (nil: absent) free-form value sent to
+// relay proxies and rejects control characters, which only break logs and
+// notifier messages, and values over maxLen characters. Empty is allowed: it
+// unsets the option.
 func validateConfigText(s *string, field string, maxLen int) model.ValidationErrors {
 	if s == nil {
 		return nil

@@ -4,7 +4,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/stretchr/testify/assert"
@@ -95,38 +94,4 @@ func TestValidateNotifiers(t *testing.T) {
 			assert.Equal(t, tt.wantFields, fields)
 		})
 	}
-}
-
-// A notifier is free-form input that ends up in goff-proxy.yaml: whatever
-// passes validation must render to YAML that reads back the same values.
-func FuzzNotifierRendering(f *testing.F) {
-	for _, seed := range [][3]string{
-		{"#flags", "https://hooks.example/x", "Bearer t"},
-		{"a\nkind: log", "https://x.example/?q=\"a: b\"", "#comment"},
-		{" ", "http://x.example/\x85", "value: [1]"},
-	} {
-		f.Add(seed[0], seed[1], seed[2])
-	}
-	f.Fuzz(func(t *testing.T, name, endpoint, header string) {
-		ns := []model.Notifier{{
-			Name: name, Kind: model.NotifierWebhook, Enabled: true, EndpointURL: endpoint,
-			Secret: header, Headers: map[string]string{"X-Value": header},
-		}}
-		// JSON decoding already turns invalid UTF-8 into U+FFFD before validation.
-		if validateNotifiers(ns) != nil || !utf8.ValidString(endpoint) || !utf8.ValidString(header) {
-			return
-		}
-		_, got := parseRelayProxyConfig(t, []model.RelayProxyFlagset{
-			{ID: "id-1", Name: "prod", TeamName: "T", APIKeys: []string{"goff_a"}, Notifiers: ns},
-		})
-		require.Len(t, got.FlagSets, 1)
-		require.Len(t, got.FlagSets[0].Notifiers, 1)
-		n := got.FlagSets[0].Notifiers[0]
-		assert.Equal(t, "webhook", n.Kind)
-		assert.Equal(t, ns[0].EndpointURL, n.EndpointURL)
-		if header != "" {
-			assert.Equal(t, header, n.Secret)
-			assert.Equal(t, []string{header}, n.Headers["X-Value"])
-		}
-	})
 }

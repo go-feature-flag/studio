@@ -2,93 +2,102 @@ package service
 
 import (
 	"context"
-	_ "embed"
-	"encoding/json"
-	"net"
-	"net/url"
-	"slices"
-	"strconv"
-	"strings"
-	"text/template"
-	"unicode"
+	"errors"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
+	"github.com/gofeatureflag/flag-management-system/server/management/repository"
 )
 
-//go:embed templates/goff-proxy.yaml.tmpl
-var relayProxyTemplateText string
+// RelayProxySecret returns the company's relay proxy secret, or nil when none
+// was generated yet.
+func (s *CompanyService) RelayProxySecret(ctx context.Context, companyID string) (*model.RelayProxySecret, error) {
+	return s.companies.GetRelayProxySecret(ctx, companyID)
+}
 
-// The DB URI reuses Studio's host and database but never its credentials: the
-// relay proxy gets its own role that only needs SELECT on goff_flags. A flagset without a key
-// is commented out because the relay proxy rejects a flagset with no apiKeys,
-// and an empty flagSets list would make it fall back to top-level retrievers.
-var relayProxyTemplate = template.Must(template.New("goff-proxy.yaml").Funcs(template.FuncMap{
-	"quote":      strconv.Quote,
-	"comment":    yamlComment,
-	"enrichment": yamlEnrichment,
-}).Parse(relayProxyTemplateText))
-
-// yamlEnrichment renders the enrichment object as a one-line JSON (hence YAML
-// flow) mapping, or "" when unset, null or empty so the key is left out.
-// Re-marshaling compacts the jsonb text so it stays on its line.
-func yamlEnrichment(raw json.RawMessage) string {
-	var m map[string]any
-	if json.Unmarshal(raw, &m) != nil || len(m) == 0 {
-		return ""
+// RotateRelayProxySecret generates a new relay proxy secret for the company.
+// Relay proxies still sending the old one stop syncing.
+func (s *CompanyService) RotateRelayProxySecret(
+	ctx context.Context, actorID, companyID string,
+) (*model.RelayProxySecret, error) {
+	rs, err := s.companies.SetRelayProxySecret(ctx, companyID, newSecret("goff_rp_"))
+	if err != nil {
+		return nil, writeError(err)
 	}
-	b, _ := json.Marshal(m) // decoded from JSON, so it always re-encodes
-	return string(b)
+	// The secret itself is never logged, only when it changed.
+	_ = s.audit.Record(ctx, nil, repository.AuditInput{
+		ActorUserID: &actorID, CompanyID: &companyID,
+		Action: model.AuditActionUpdate, TargetType: model.AuditTargetCompany, TargetID: companyID,
+		After: map[string]any{"relayProxySecretCreatedAt": rs.CreatedAt},
+	})
+	return rs, nil
 }
 
-// yamlComment keeps a free-form name on its comment line: YAML also breaks lines
-// on U+0085/U+2028/U+2029 and rejects control characters, so every
-// non-printable rune becomes a space (strings.Map turns invalid UTF-8 into U+FFFD).
-func yamlComment(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return ' '
-	}, s)
+// CompanyIDByRelayProxySecret returns the company a relay proxy secret
+// belongs to, or ErrUnauthenticated.
+func (s *CompanyService) CompanyIDByRelayProxySecret(ctx context.Context, secret string) (string, error) {
+	id, err := s.companies.IDByRelayProxySecret(ctx, secret)
+	if errors.Is(err, repository.ErrNotFound) {
+		return "", ErrUnauthenticated
+	}
+	return id, err
 }
 
-// RelayProxyConfig renders the goff-proxy.yaml serving every live flagset of
-// the company.
-func (s *FlagsetService) RelayProxyConfig(ctx context.Context, companyID string) (string, error) {
+// RelayProxyFlagSets returns the company's flagsets as the flagSets of a relay
+// proxy configuration. Each one reads its flags back from Studio with an http
+// retriever: flagsURL gives the URL of a flagset's flags, and authorization is
+// the header the relay proxy authenticated with, so Studio never re-reads the
+// secret.
+func (s *FlagsetService) RelayProxyFlagSets(
+	ctx context.Context, companyID string, flagsURL func(flagsetID string) string, authorization string,
+) (*model.RelayProxyFile, error) {
 	flagsets, err := s.repo.ListForRelayProxy(ctx, companyID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return renderRelayProxyConfig(flagsets, relayProxyDBURI(s.repo.DBTarget()))
-}
-
-// relayProxyDBURI is the URI the relay proxy should use, as seen from Studio:
-// the host may differ from the relay proxy's network, hence the UI tip. A unix
-// socket host has no URL form, so it stays a placeholder.
-func relayProxyDBURI(host string, port uint16, database string) string {
-	if host == "" || strings.HasPrefix(host, "/") {
-		host = "<host>"
-	}
-	database = url.PathEscape(database)
-	if database == "" {
-		database = "<db>"
-	}
-	return "postgres://goff_relay:<password>@" + net.JoinHostPort(host, strconv.Itoa(int(port))) + "/" + database
-}
-
-func renderRelayProxyConfig(flagsets []model.RelayProxyFlagset, dbURI string) (string, error) {
-	served := false
-	for i, fs := range flagsets {
-		served = served || len(fs.APIKeys) > 0
-		flagsets[i].Notifiers = slices.DeleteFunc(slices.Clone(fs.Notifiers), func(n model.Notifier) bool {
-			return !n.Enabled
+	file := &model.RelayProxyFile{FlagSets: []model.RelayProxyFlagSet{}}
+	for _, fs := range flagsets {
+		// The relay proxy rejects the whole document for one flagset without API keys.
+		if len(fs.APIKeys) == 0 {
+			continue
+		}
+		file.FlagSets = append(file.FlagSets, model.RelayProxyFlagSet{
+			Name:       fs.ID,
+			APIKeys:    fs.APIKeys,
+			FileFormat: "json",
+			Retrievers: []model.RelayProxyRetriever{{
+				Kind:    "http",
+				URL:     flagsURL(fs.ID),
+				Headers: map[string][]string{"Authorization": {authorization}},
+			}},
+			Notifiers:                   relayProxyNotifiers(fs.Notifiers),
+			EvaluationContextEnrichment: fs.EvaluationContextEnrichment,
+			RelayProxySettings:          fs.RelayProxySettings,
 		})
 	}
-	var b strings.Builder
-	err := relayProxyTemplate.Execute(&b, struct {
-		Flagsets []model.RelayProxyFlagset
-		Served   bool
-		URI      string
-	}{flagsets, served, dbURI})
-	return b.String(), err
+	return file, nil
+}
+
+// RelayProxyFlags returns the flags of a flagset of the company as a GO
+// Feature Flag JSON flag file.
+func (s *FlagsetService) RelayProxyFlags(ctx context.Context, companyID, flagsetID string) ([]byte, error) {
+	return s.repo.FlagsForRelayProxy(ctx, companyID, flagsetID)
+}
+
+// relayProxyNotifiers keeps the enabled notifiers, in the relay proxy's shape.
+func relayProxyNotifiers(ns []model.Notifier) []model.RelayProxyNotifier {
+	var out []model.RelayProxyNotifier
+	for _, n := range ns {
+		if !n.Enabled {
+			continue
+		}
+		rn := model.RelayProxyNotifier{Kind: n.Kind, WebhookURL: n.WebhookURL, EndpointURL: n.EndpointURL, Secret: n.Secret}
+		if len(n.Headers) > 0 {
+			rn.Headers = make(map[string][]string, len(n.Headers))
+			for k, v := range n.Headers {
+				rn.Headers[k] = []string{v}
+			}
+		}
+		out = append(out, rn)
+	}
+	return out
 }

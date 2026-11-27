@@ -338,14 +338,14 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 	got[2].EvaluationContextEnrichment = nil // jsonb reformats it; compared above
 	defaults := model.RelayProxySettings{PollingInterval: 60000}
 	assert.Equal(t, []model.RelayProxyFlagset{
-		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}, RelayProxySettings: defaults,
+		{ID: keyless.ID, Name: "empty", APIKeys: []string{}, RelayProxySettings: defaults,
 			Notifiers: []model.Notifier{}},
 		{
-			ID: prod.ID, Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_first", "goff_second"},
+			ID: prod.ID, Name: "prod", APIKeys: []string{"goff_first", "goff_second"},
 			RelayProxySettings: defaults, Notifiers: []model.Notifier{},
 		},
 		{
-			ID: dev.ID, Name: "dev", TeamName: "Web", APIKeys: []string{"goff_dev"},
+			ID: dev.ID, Name: "dev", APIKeys: []string{"goff_dev"},
 			RelayProxySettings: model.RelayProxySettings{PollingInterval: 5000, Environment: "development"},
 			Notifiers:          notifiers,
 		},
@@ -353,14 +353,6 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 
 	_, err = repo.ListForRelayProxy(ctx, "00000000-0000-0000-0000-000000000000")
 	assert.ErrorIs(t, err, repository.ErrNotFound)
-
-	host, port, database := repo.DBTarget()
-	cfg := db.Pool.Config().ConnConfig
-	assert.Equal(t, cfg.Host, host)
-	assert.Equal(t, cfg.Port, port)
-	assert.Equal(t, cfg.Database, database)
-	assert.NotEmpty(t, host)
-	assert.NotEmpty(t, database)
 }
 
 func TestFlagsetRepoFlagsForRelayProxy(t *testing.T) {
