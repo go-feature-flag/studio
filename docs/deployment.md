@@ -123,6 +123,33 @@ origin is the only one allowed to call the API with credentials (CORS) and to se
 - **Multi company** (`server.multiCompany=true`): super admins create companies, each with a
   first admin, and company admins add users by email.
 
+## Connecting relay proxies
+
+GO Feature Flag relay proxies (v1.59.0 or later) can load their flagsets from Studio, so
+flag changes reach them without a configuration file to maintain.
+
+1. As a company admin, generate the company's relay proxy secret:
+   `POST /api/v1/companies/{companyId}/relay-proxy-secret`.
+2. Point the relay proxy at Studio in its `goff-proxy.yaml`, and remove any `flagSets` key
+   from that file (the relay proxy refuses both together):
+
+   ```yaml
+   studio:
+     url: https://studio.example.com/api/v1/relay-proxy/flagsets.json
+     headers:
+       Authorization:
+         - Bearer <relay proxy secret>
+   ```
+
+Studio answers with every flagset of the company that has an API key. Each flagset reads its
+flags back from Studio with an `http` retriever, on the host the relay proxy used in
+`studio.url` and with the same secret, so the relay proxy needs no database access. Use a URL
+the relay proxy can reach (a service or network name works), and keep `/api/v1/relay-proxy`
+reachable through your reverse proxy.
+
+Generating a new secret revokes the old one: relay proxies still using it stop syncing until
+their configuration has the new secret.
+
 ## Observability
 
 - Logs go to stderr, as JSON by default; each request line carries a `request_id`, also

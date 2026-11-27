@@ -293,6 +293,22 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.RelayProxyFlagset])
 }
 
+// FlagsForRelayProxy returns the flags of a live flagset of the company as a
+// GO Feature Flag flag file (a JSON object of name → config, read from the
+// goff_flags view), or ErrNotFound when the company has no such flagset.
+func (r *FlagsetRepo) FlagsForRelayProxy(ctx context.Context, companyID, flagsetID string) (json.RawMessage, error) {
+	var flags json.RawMessage
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT (SELECT COALESCE(jsonb_object_agg(g.flag_name, g.config), '{}') FROM goff_flags g WHERE g.flagset = fs.id)
+		FROM flagsets fs
+		JOIN teams t ON t.id = fs.team_id
+		WHERE fs.id = $1 AND t.company_id = $2 AND fs.deleted_at IS NULL`, flagsetID, companyID).Scan(&flags)
+	if isNoRows(err) {
+		return nil, ErrNotFound
+	}
+	return flags, err
+}
+
 // GetNotifiers returns the notifiers of a live flagset.
 func (r *FlagsetRepo) GetNotifiers(ctx context.Context, id string) ([]model.Notifier, error) {
 	ns := []model.Notifier{}

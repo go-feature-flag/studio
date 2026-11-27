@@ -590,6 +590,90 @@ definitions:
       to:
         type: number
     type: object
+  model.RelayProxyFile:
+    properties:
+      flagSets:
+        items:
+          $ref: '#/definitions/model.RelayProxyFlagSet'
+        type: array
+    type: object
+  model.RelayProxyFlagSet:
+    properties:
+      apiKeys:
+        items:
+          type: string
+        type: array
+      disableNotifierOnInit:
+        type: boolean
+      enablePollingJitter:
+        type: boolean
+      environment:
+        example: production
+        type: string
+      evaluationContextEnrichment:
+        description: EvaluationContextEnrichment is a JSON object, or absent when
+          unset.
+        type: object
+      fileFormat:
+        type: string
+      name:
+        type: string
+      notifiers:
+        items:
+          $ref: '#/definitions/model.RelayProxyNotifier'
+        type: array
+      pollingInterval:
+        description: |-
+          PollingInterval is how often, in milliseconds, the relay proxy reloads
+          the flagset's flags.
+        example: 60000
+        type: integer
+      retrievers:
+        items:
+          $ref: '#/definitions/model.RelayProxyRetriever'
+        type: array
+      startWithRetrieverError:
+        type: boolean
+    type: object
+  model.RelayProxyNotifier:
+    properties:
+      endpointUrl:
+        type: string
+      headers:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      kind:
+        $ref: '#/definitions/model.NotifierKind'
+      secret:
+        type: string
+      webhookUrl:
+        type: string
+    type: object
+  model.RelayProxyRetriever:
+    properties:
+      headers:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      kind:
+        example: http
+        type: string
+      url:
+        type: string
+    type: object
+  model.RelayProxySecret:
+    properties:
+      createdAt:
+        type: string
+      secret:
+        example: goff_rp_4f9c…
+        type: string
+    type: object
   model.ReplaceNotifiersRequest:
     properties:
       notifiers:
@@ -766,7 +850,9 @@ info:
     Every route except GET /config and POST /auth/logout requires the HttpOnly `goff_mgmt_session`
     session cookie set by the OIDC login (GET /auth/login, outside this base path;
     see docs/reference/api.md)
-    and answers 401 without it. Errors use the `{message, errors?}` envelope (model.APIResponse).
+    and answers 401 without it. The /relay-proxy routes take a company's relay proxy secret instead
+    (`Authorization: Bearer <secret>`), for GO Feature Flag relay proxies.
+    Errors use the `{message, errors?}` envelope (model.APIResponse).
   title: GO Feature Flag Management API
   version: 0.1.0
 paths:
@@ -1295,6 +1381,76 @@ paths:
             $ref: '#/definitions/model.APIResponse'
       summary: Relay proxy configuration (goff-proxy.yaml) serving every flagset of
         a company (company admin)
+      tags:
+      - companies
+  /companies/{companyId}/relay-proxy-secret:
+    get:
+      parameters:
+      - description: company id
+        in: path
+        name: companyId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data is null when no secret was generated
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.RelayProxySecret'
+              type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Relay proxy secret of a company (company admin)
+      tags:
+      - companies
+    post:
+      parameters:
+      - description: company id
+        in: path
+        name: companyId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.APIResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/model.RelayProxySecret'
+              type: object
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Generate a new relay proxy secret (company admin); relay proxies using
+        the old one stop syncing
       tags:
       - companies
   /companies/{companyId}/teams:
@@ -2266,6 +2422,58 @@ paths:
       summary: Create a company during onboarding (user without a company)
       tags:
       - onboarding
+  /relay-proxy/flagsets.json:
+    get:
+      description: |-
+        Authenticated with "Authorization: Bearer <relay proxy secret>", not the session.
+        The body is the relay proxy configuration itself (no envelope); each flagset reads its
+        flags from /relay-proxy/flagsets/{id}/flags.json on the host the request was sent to.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.RelayProxyFile'
+        "401":
+          description: missing or unknown secret
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Flagsets of the company, for the relay proxy's studio.url option
+      tags:
+      - relay-proxy
+  /relay-proxy/flagsets/{id}/flags.json:
+    get:
+      description: |-
+        Authenticated with "Authorization: Bearer <relay proxy secret>", not the session.
+        The body is the flag file itself (no envelope): flag name → flag configuration.
+      parameters:
+      - description: flagset id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: object
+            type: object
+        "401":
+          description: missing or unknown secret
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: no such flagset in the secret's company
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Flags of a flagset as a GO Feature Flag JSON flag file, for the relay
+        proxy's http retriever
+      tags:
+      - relay-proxy
   /teams:
     get:
       produces:

@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
@@ -180,6 +181,61 @@ func TestCompanyRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.Membership(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.SetRelayProxySecret(ctx, id, "s")
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.GetRelayProxySecret(ctx, id)
+	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.IDByRelayProxySecret(ctx, "s")
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+func TestCompanyRepoRelayProxySecret(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewCompanyRepo(db)
+	ctx := t.Context()
+	acme := testutil.SeedCompany(t, db, "Acme")
+	other := testutil.SeedCompany(t, db, "Other")
+	unknown := "00000000-0000-0000-0000-000000000000"
+
+	got, err := repo.GetRelayProxySecret(ctx, acme.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "no secret until one is generated")
+
+	set, err := repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_one")
+	require.NoError(t, err)
+	assert.Equal(t, "goff_rp_one", set.Secret)
+	assert.WithinDuration(t, time.Now(), set.CreatedAt, time.Minute)
+	got, err = repo.GetRelayProxySecret(ctx, acme.ID)
+	require.NoError(t, err)
+	assert.Equal(t, set, got)
+
+	_, err = repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_two")
+	require.NoError(t, err)
+	_, err = repo.SetRelayProxySecret(ctx, other.ID, "goff_rp_two")
+	assert.Error(t, err, "a secret identifies one company")
+
+	tests := []struct {
+		name    string
+		secret  string
+		want    string
+		wantErr error
+	}{
+		{"current secret", "goff_rp_two", acme.ID, nil},
+		{"rotated secret", "goff_rp_one", "", repository.ErrNotFound},
+		{"empty secret", "", "", repository.ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			id, err := repo.IDByRelayProxySecret(ctx, tt.secret)
+			assert.ErrorIs(t, err, tt.wantErr)
+			assert.Equal(t, tt.want, id)
+		})
+	}
+
+	_, err = repo.SetRelayProxySecret(ctx, unknown, "goff_rp_x")
+	assert.ErrorIs(t, err, repository.ErrNotFound)
+	_, err = repo.GetRelayProxySecret(ctx, unknown)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
 
 func TestCompanyRepoCreateWithAdmin(t *testing.T) {

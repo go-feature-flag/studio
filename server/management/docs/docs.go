@@ -841,6 +841,120 @@ const docTemplate = `{
                 }
             }
         },
+        "/companies/{companyId}/relay-proxy-secret": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "companies"
+                ],
+                "summary": "Relay proxy secret of a company (company admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "company id",
+                        "name": "companyId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "data is null when no secret was generated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.RelayProxySecret"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "companies"
+                ],
+                "summary": "Generate a new relay proxy secret (company admin); relay proxies using the old one stop syncing",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "company id",
+                        "name": "companyId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/model.APIResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/model.RelayProxySecret"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/companies/{companyId}/teams": {
             "get": {
                 "produces": [
@@ -2357,6 +2471,76 @@ const docTemplate = `{
                     },
                     "413": {
                         "description": "body larger than 256 KiB",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/relay-proxy/flagsets.json": {
+            "get": {
+                "description": "Authenticated with \"Authorization: Bearer \u003crelay proxy secret\u003e\", not the session.\nThe body is the relay proxy configuration itself (no envelope); each flagset reads its\nflags from /relay-proxy/flagsets/{id}/flags.json on the host the request was sent to.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "relay-proxy"
+                ],
+                "summary": "Flagsets of the company, for the relay proxy's studio.url option",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.RelayProxyFile"
+                        }
+                    },
+                    "401": {
+                        "description": "missing or unknown secret",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/relay-proxy/flagsets/{id}/flags.json": {
+            "get": {
+                "description": "Authenticated with \"Authorization: Bearer \u003crelay proxy secret\u003e\", not the session.\nThe body is the flag file itself (no envelope): flag name → flag configuration.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "relay-proxy"
+                ],
+                "summary": "Flags of a flagset as a GO Feature Flag JSON flag file, for the relay proxy's http retriever",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "flagset id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "missing or unknown secret",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "no such flagset in the secret's company",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }
@@ -4191,6 +4375,127 @@ const docTemplate = `{
                 }
             }
         },
+        "model.RelayProxyFile": {
+            "type": "object",
+            "properties": {
+                "flagSets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.RelayProxyFlagSet"
+                    }
+                }
+            }
+        },
+        "model.RelayProxyFlagSet": {
+            "type": "object",
+            "properties": {
+                "apiKeys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "disableNotifierOnInit": {
+                    "type": "boolean"
+                },
+                "enablePollingJitter": {
+                    "type": "boolean"
+                },
+                "environment": {
+                    "type": "string",
+                    "example": "production"
+                },
+                "evaluationContextEnrichment": {
+                    "description": "EvaluationContextEnrichment is a JSON object, or absent when unset.",
+                    "type": "object"
+                },
+                "fileFormat": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notifiers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.RelayProxyNotifier"
+                    }
+                },
+                "pollingInterval": {
+                    "description": "PollingInterval is how often, in milliseconds, the relay proxy reloads\nthe flagset's flags.",
+                    "type": "integer",
+                    "example": 60000
+                },
+                "retrievers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.RelayProxyRetriever"
+                    }
+                },
+                "startWithRetrieverError": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "model.RelayProxyNotifier": {
+            "type": "object",
+            "properties": {
+                "endpointUrl": {
+                    "type": "string"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "kind": {
+                    "$ref": "#/definitions/model.NotifierKind"
+                },
+                "secret": {
+                    "type": "string"
+                },
+                "webhookUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.RelayProxyRetriever": {
+            "type": "object",
+            "properties": {
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "kind": {
+                    "type": "string",
+                    "example": "http"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.RelayProxySecret": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "secret": {
+                    "type": "string",
+                    "example": "goff_rp_4f9c…"
+                }
+            }
+        },
         "model.ReplaceNotifiersRequest": {
             "type": "object",
             "properties": {
@@ -4454,7 +4759,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "GO Feature Flag Management API",
-	Description:      "Source-of-truth API for managing GO Feature Flag flagsets, flags, teams, and audit history.\nEvery route except GET /config and POST /auth/logout requires the HttpOnly `goff_mgmt_session`\nsession cookie set by the OIDC login (GET /auth/login, outside this base path;\nsee docs/reference/api.md)\nand answers 401 without it. Errors use the `{message, errors?}` envelope (model.APIResponse).",
+	Description:      "Source-of-truth API for managing GO Feature Flag flagsets, flags, teams, and audit history.\nEvery route except GET /config and POST /auth/logout requires the HttpOnly `goff_mgmt_session`\nsession cookie set by the OIDC login (GET /auth/login, outside this base path;\nsee docs/reference/api.md)\nand answers 401 without it. The /relay-proxy routes take a company's relay proxy secret instead\n(`Authorization: Bearer <secret>`), for GO Feature Flag relay proxies.\nErrors use the `{message, errors?}` envelope (model.APIResponse).",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

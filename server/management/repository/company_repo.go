@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
@@ -261,4 +262,52 @@ func (r *CompanyRepo) Membership(ctx context.Context, userID string) (*model.Com
 		return nil, err
 	}
 	return &m, nil
+}
+
+// SetRelayProxySecret replaces the company's relay proxy secret.
+func (r *CompanyRepo) SetRelayProxySecret(
+	ctx context.Context, companyID, secret string,
+) (*model.RelayProxySecret, error) {
+	s := model.RelayProxySecret{Secret: secret}
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE companies SET relay_proxy_secret = $2, relay_proxy_secret_created_at = NOW()
+		WHERE id = $1
+		RETURNING relay_proxy_secret_created_at`, companyID, secret).Scan(&s.CreatedAt)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetRelayProxySecret returns the company's relay proxy secret, or nil, nil
+// when none was generated.
+func (r *CompanyRepo) GetRelayProxySecret(ctx context.Context, companyID string) (*model.RelayProxySecret, error) {
+	var secret *string
+	var createdAt *time.Time
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT relay_proxy_secret, relay_proxy_secret_created_at FROM companies WHERE id = $1`, companyID,
+	).Scan(&secret, &createdAt)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if secret == nil || createdAt == nil {
+		return nil, nil
+	}
+	return &model.RelayProxySecret{Secret: *secret, CreatedAt: *createdAt}, nil
+}
+
+// IDByRelayProxySecret returns the company holding secret, or ErrNotFound.
+func (r *CompanyRepo) IDByRelayProxySecret(ctx context.Context, secret string) (string, error) {
+	var id string
+	err := r.db.Pool.QueryRow(ctx, `SELECT id FROM companies WHERE relay_proxy_secret = $1`, secret).Scan(&id)
+	if isNoRows(err) {
+		return "", ErrNotFound
+	}
+	return id, err
 }
