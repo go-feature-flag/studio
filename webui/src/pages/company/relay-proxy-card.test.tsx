@@ -42,7 +42,8 @@ const secret = { secret: "goff_rp_x", createdAt: "2026-11-26T10:00:00Z" };
 const lastMutate = () =>
   h.mutate.mock.lastCall as [{ url: string; method: string; values: unknown }, MutateCallbacks];
 const inAnHour = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
-const alertText = () => screen.queryByText("company.relayProxy.previousValid");
+// The previous-secret messages go through <Trans>, so they render in English.
+const alertText = () => screen.queryByText(/stays valid until/);
 // The confirm button of the open dialog, named like the button that opened it.
 const confirmButton = (name: string) => screen.getAllByRole("button", { name }).at(-1)!;
 
@@ -92,7 +93,7 @@ describe("CompanyRelayProxyCard", () => {
     expect(dialog).toHaveTextContent("company.relayProxy.rotateDesc");
 
     // No previous secret: nothing to warn about revoking.
-    expect(dialog).not.toHaveTextContent("company.relayProxy.rotateRevokesPrevious");
+    expect(dialog).not.toHaveTextContent(/is revoked now/);
 
     await userEvent.click(confirmButton("company.relayProxy.rotate"));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
@@ -118,13 +119,16 @@ describe("CompanyRelayProxyCard", () => {
   });
 
   it("shows until when the previous secret is valid, and revokes it after confirming", async () => {
-    h.data = { ...secret, previousExpiresAt: inAnHour() };
+    h.data = { ...secret, previousExpiresAt: inAnHour(), previousSecretEnd: "1d0e3" };
     render(<CompanyRelayProxyCard companyId={companyId} />);
     expect(alertText()).toBeInTheDocument();
+    // Only the end of the previous secret, masked, as inline code.
+    expect(screen.getByText("*****1d0e3").tagName).toBe("CODE");
 
     // Rotating again warns that the previous secret goes away.
     await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.rotate" }));
-    expect(await screen.findByRole("alertdialog")).toHaveTextContent("company.relayProxy.rotateRevokesPrevious");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(/The previous secret \*{5}1d0e3, still valid until .+, is revoked now\./);
     await userEvent.click(screen.getByRole("button", { name: "common.cancel" }));
 
     await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.revokePrevious" }));

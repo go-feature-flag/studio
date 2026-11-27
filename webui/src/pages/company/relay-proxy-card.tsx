@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCustom, useCustomMutation, useTranslate } from "@refinedev/core";
+import { Trans } from "react-i18next";
 import { ClockIcon, InfoIcon, KeyRound, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CodeBlock } from "@/components/ui/code-block";
+import { CodeChip } from "@/components/ui/code-chip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
@@ -35,8 +37,14 @@ import { errMessage } from "@/lib/errors";
 import { formatExactDateTime, formatRelativeTime } from "@/lib/relative-time";
 import { API_URL } from "@/providers/constants";
 
-// previousExpiresAt: when the secret the last rotation replaced stops working.
-type RelayProxySecret = { secret: string; createdAt: string; previousExpiresAt?: string };
+// previousExpiresAt: when the secret the last rotation replaced stops working;
+// previousSecretEnd: its last 5 characters, to recognize it.
+type RelayProxySecret = {
+  secret: string;
+  createdAt: string;
+  previousExpiresAt?: string;
+  previousSecretEnd?: string;
+};
 
 // How long a rotation keeps the current secret valid (server max: 30 days).
 const KEEP_OPTIONS = [
@@ -80,6 +88,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
   // time on a page left open. Past MAX_TIMEOUT, the next load does it.
   const previousExpiresAt = secret?.previousExpiresAt;
   const previousValid = !!previousExpiresAt && Date.parse(previousExpiresAt) > now;
+  const previousSecret = `*****${secret?.previousSecretEnd ?? ""}`;
   useEffect(() => {
     if (!previousExpiresAt) return;
     const delay = Date.parse(previousExpiresAt) - Date.now();
@@ -155,10 +164,15 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
                 <ClockIcon />
                 <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-foreground">
                   <span>
-                    {t("company.relayProxy.previousValid", {
-                      date: formatExactDateTime(previousExpiresAt),
-                      relative: formatRelativeTime(previousExpiresAt),
-                    })}
+                    <Trans
+                      i18nKey="company.relayProxy.previousValid"
+                      values={{
+                        secret: previousSecret,
+                        date: formatExactDateTime(previousExpiresAt),
+                        relative: formatRelativeTime(previousExpiresAt),
+                      }}
+                      components={{ code: <CodeChip /> }}
+                    />
                   </span>
                   <Button size="sm" variant="outline" onClick={() => setConfirmRevoke(true)}>
                     {t("company.relayProxy.revokePrevious")}
@@ -215,7 +229,11 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
             </Select>
             {previousValid && (
               <p className="text-sm text-muted-foreground">
-                {t("company.relayProxy.rotateRevokesPrevious", { date: formatExactDateTime(previousExpiresAt) })}
+                <Trans
+                  i18nKey="company.relayProxy.rotateRevokesPrevious"
+                  values={{ secret: previousSecret, date: formatExactDateTime(previousExpiresAt) }}
+                  components={{ code: <CodeChip /> }}
+                />
               </p>
             )}
           </div>

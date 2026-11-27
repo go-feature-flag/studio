@@ -36,6 +36,7 @@ export const RelayProxyPreviousSecret: Story = {
         secret: "goff_rp_4f9c2b7e",
         createdAt: "2026-11-26T10:00:00Z",
         previousExpiresAt: new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString(),
+        previousSecretEnd: "1d0e3",
       },
     },
   },

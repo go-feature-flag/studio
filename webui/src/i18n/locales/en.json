@@ -737,8 +737,8 @@
         "week": "7 days",
         "month": "30 days"
       },
-      "rotateRevokesPrevious": "The previous secret, still valid until {{date}}, is revoked now.",
-      "previousValid": "The previous secret stays valid until {{date}} ({{relative}}). Update your relay proxies with the secret below before then.",
+      "rotateRevokesPrevious": "The previous secret <code>{{secret}}</code>, still valid until {{date}}, is revoked now.",
+      "previousValid": "The previous secret <code>{{secret}}</code> stays valid until {{date}} ({{relative}}). Update your relay proxies with the secret below before then.",
       "revokePrevious": "Revoke now",
       "revokePreviousTitle": "Revoke the previous secret?",
       "revokePreviousDesc": "Relay proxies still using it stop syncing right away.",
