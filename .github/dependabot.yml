@@ -1,0 +1,72 @@
+version: 2
+
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/server/management"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "automerge"]
+    cooldown:
+      default-days: 7
+      exclude:
+        - "github.com/thomaspoignant/go-feature-flag/modules/core"
+    commit-message:
+      prefix: "chore(server)"
+    groups:
+      go-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Dependabot uses the npm ecosystem for pnpm manifests and lockfiles.
+  - package-ecosystem: "npm"
+    directory: "/webui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "automerge"]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(webui)"
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "automerge"]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "docker"
+    directory: "/webui"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "automerge"]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(webui)"
+
+  - package-ecosystem: "docker-compose"
+    directory: "/server/management"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    labels: ["dependencies", "automerge"]
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(server)"
