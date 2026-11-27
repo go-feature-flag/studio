@@ -79,3 +79,37 @@ func TestRoutesRelayProxy(t *testing.T) {
 	require.NoError(t, json.NewDecoder(asRelayProxy(flagsPath, secret).Body).Decode(&flags))
 	assert.Equal(t, false, flags["flag"]["disable"])
 }
+
+// Rotating with a grace period keeps the old secret working, for the
+// configuration and the flags, until it is revoked.
+func TestRoutesRelayProxyRotationGracePeriod(t *testing.T) {
+	e, auth := routesServer(t)
+	f := routesSeed(t, auth)
+	asRelayProxy := func(path, secret string) int {
+		req := f.req("GET", path, anon, "")
+		req.Header.Set(echo.HeaderAuthorization, "Bearer "+secret)
+		return platformServe(e, req).Code
+	}
+	flagsPath := "/api/v1/relay-proxy/flagsets/" + f.ids["flagset"] + "/flags.json"
+
+	old := rotateRelayProxySecret(t, e, f)
+	rec := f.do(e, "POST", "/api/v1/companies/{company}/relay-proxy-secret", companyAdmin, `{"keepPreviousSeconds":3600}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body struct {
+		Data model.RelayProxySecret `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	secret := body.Data.Secret
+	require.NotNil(t, body.Data.PreviousExpiresAt)
+	assert.NotContains(t, rec.Body.String(), old, "the previous secret is never returned")
+
+	for _, s := range []string{old, secret} {
+		assert.Equal(t, http.StatusOK, asRelayProxy("/api/v1/relay-proxy/flagsets.json", s))
+		assert.Equal(t, http.StatusOK, asRelayProxy(flagsPath, s))
+	}
+
+	rec = f.do(e, "DELETE", "/api/v1/companies/{company}/relay-proxy-secret/previous", companyAdmin, "")
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	assert.Equal(t, http.StatusUnauthorized, asRelayProxy("/api/v1/relay-proxy/flagsets.json", old))
+	assert.Equal(t, http.StatusOK, asRelayProxy("/api/v1/relay-proxy/flagsets.json", secret))
+}

@@ -841,13 +841,17 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "description": "The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);\na secret replaced by an earlier rotation is revoked at once.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "companies"
                 ],
-                "summary": "Generate a new relay proxy secret (company admin); relay proxies using the old one stop syncing",
+                "summary": "Generate a new relay proxy secret (company admin)",
                 "parameters": [
                     {
                         "type": "string",
@@ -855,6 +859,14 @@ const docTemplate = `{
                         "name": "companyId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "rotation options",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/model.RotateRelayProxySecretRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -875,6 +887,52 @@ const docTemplate = `{
                                 }
                             ]
                         }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "no valid session",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/companies/{companyId}/relay-proxy-secret/previous": {
+            "delete": {
+                "tags": [
+                    "companies"
+                ],
+                "summary": "Revoke the relay proxy secret a rotation replaced, before its expiry (company admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "company id",
+                        "name": "companyId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
                     },
                     "401": {
                         "description": "no valid session",
@@ -4432,6 +4490,10 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "previousExpiresAt": {
+                    "description": "PreviousExpiresAt is when the secret the last rotation replaced stops\nbeing accepted; absent when there is none or it expired. That secret\nitself is never returned.",
+                    "type": "string"
+                },
                 "secret": {
                     "type": "string",
                     "example": "goff_rp_4f9c…"
@@ -4467,6 +4529,18 @@ const docTemplate = `{
             "properties": {
                 "comment": {
                     "type": "string"
+                }
+            }
+        },
+        "model.RotateRelayProxySecretRequest": {
+            "type": "object",
+            "properties": {
+                "keepPreviousSeconds": {
+                    "description": "KeepPreviousSeconds keeps the current secret valid this long next to the\nnew one; 0 (the default) revokes it at once.",
+                    "type": "integer",
+                    "maximum": 2592000,
+                    "minimum": 0,
+                    "example": 86400
                 }
             }
         },

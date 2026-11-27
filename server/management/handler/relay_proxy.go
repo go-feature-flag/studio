@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/api/middleware"
+	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/labstack/echo/v5"
 )
 
@@ -26,22 +27,50 @@ func (h *CompanyHandler) GetRelayProxySecret(c *echo.Context) error {
 }
 
 // RotateRelayProxySecret godoc
-// @Summary  Generate a new relay proxy secret (company admin); relay proxies using the old one stop syncing
-// @Tags     companies
-// @Produce  json
-// @Param    companyId path string true "company id"
-// @Success  200 {object} model.APIResponse{data=model.RelayProxySecret}
-// @Failure  401 {object} model.APIResponse "no valid session"
-// @Failure  403 {object} model.APIResponse
-// @Failure  404 {object} model.APIResponse
-// @Router   /companies/{companyId}/relay-proxy-secret [post]
+// @Summary     Generate a new relay proxy secret (company admin)
+// @Description The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);
+// @Description a secret replaced by an earlier rotation is revoked at once.
+// @Tags        companies
+// @Accept      json
+// @Produce     json
+// @Param       companyId path string true "company id"
+// @Param       body body model.RotateRelayProxySecretRequest false "rotation options"
+// @Success     200 {object} model.APIResponse{data=model.RelayProxySecret}
+// @Failure     400 {object} model.APIResponse
+// @Failure     401 {object} model.APIResponse "no valid session"
+// @Failure     403 {object} model.APIResponse
+// @Failure     404 {object} model.APIResponse
+// @Router      /companies/{companyId}/relay-proxy-secret [post]
 func (h *CompanyHandler) RotateRelayProxySecret(c *echo.Context) error {
+	// Bind leaves req zero for an empty body: no grace period.
+	var req model.RotateRelayProxySecretRequest
+	if err := c.Bind(&req); err != nil {
+		return bindError(c, err)
+	}
 	claims := middleware.MustClaims(c)
-	s, err := h.svc.RotateRelayProxySecret(c.Request().Context(), claims.UserID, c.Param("companyId"))
+	s, err := h.svc.RotateRelayProxySecret(c.Request().Context(), claims.UserID, c.Param("companyId"), &req)
 	if err != nil {
 		return writeServiceError(c, err, "failed to rotate relay proxy secret")
 	}
 	return ok(c, s)
+}
+
+// RevokePreviousRelayProxySecret godoc
+// @Summary  Revoke the relay proxy secret a rotation replaced, before its expiry (company admin)
+// @Tags     companies
+// @Param    companyId path string true "company id"
+// @Success  204
+// @Failure  401 {object} model.APIResponse "no valid session"
+// @Failure  403 {object} model.APIResponse
+// @Failure  404 {object} model.APIResponse
+// @Router   /companies/{companyId}/relay-proxy-secret/previous [delete]
+func (h *CompanyHandler) RevokePreviousRelayProxySecret(c *echo.Context) error {
+	claims := middleware.MustClaims(c)
+	err := h.svc.RevokePreviousRelayProxySecret(c.Request().Context(), claims.UserID, c.Param("companyId"))
+	if err != nil {
+		return writeServiceError(c, err, "failed to revoke the previous relay proxy secret")
+	}
+	return noContent(c)
 }
 
 // RelayProxyFlagSets godoc

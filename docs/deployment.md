@@ -152,8 +152,11 @@ Flag changes reach relay proxies on their next poll of each flagset. A running r
 also applies new or removed flagsets and API keys, but a change to a flagset's settings or
 notifiers only applies when it restarts.
 
-Rotating the secret revokes the old one: relay proxies still using it stop syncing until
-their configuration has the new secret.
+To rotate the secret without downtime, choose how long the current one stays valid (up to 30
+days) when you click **Rotate secret**. Both secrets work during that time, so update each relay
+proxy's configuration with the new one and restart it; the page shows when the old secret
+expires and can revoke it early. Rotating again during that time revokes the older secret at
+once. Rotating with "Revoke immediately" cuts off relay proxies still using the old secret.
 
 ## Observability
 

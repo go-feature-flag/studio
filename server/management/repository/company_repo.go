@@ -264,15 +264,24 @@ func (r *CompanyRepo) Membership(ctx context.Context, userID string) (*model.Com
 	return &m, nil
 }
 
-// SetRelayProxySecret replaces the company's relay proxy secret.
+// SetRelayProxySecret replaces the company's relay proxy secret. With
+// keepPrevious > 0 the replaced secret stays valid that long; any older one,
+// and the replaced one otherwise, is revoked at once.
 func (r *CompanyRepo) SetRelayProxySecret(
-	ctx context.Context, companyID, secret string,
+	ctx context.Context, companyID, secret string, keepPrevious time.Duration,
 ) (*model.RelayProxySecret, error) {
 	s := model.RelayProxySecret{Secret: secret}
+	// SET expressions read the row before the update, so the previous secret
+	// is the one being replaced.
 	err := r.db.Pool.QueryRow(ctx, `
-		UPDATE companies SET relay_proxy_secret = $2, relay_proxy_secret_created_at = NOW()
+		UPDATE companies SET
+			relay_proxy_previous_secret = CASE WHEN $3 > 0 THEN relay_proxy_secret END,
+			relay_proxy_previous_secret_expires_at =
+				CASE WHEN $3 > 0 AND relay_proxy_secret IS NOT NULL THEN NOW() + make_interval(secs => $3) END,
+			relay_proxy_secret = $2, relay_proxy_secret_created_at = NOW()
 		WHERE id = $1
-		RETURNING relay_proxy_secret_created_at`, companyID, secret).Scan(&s.CreatedAt)
+		RETURNING relay_proxy_secret_created_at, relay_proxy_previous_secret_expires_at`,
+		companyID, secret, keepPrevious.Seconds()).Scan(&s.CreatedAt, &s.PreviousExpiresAt)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, ErrNotFound
@@ -286,10 +295,12 @@ func (r *CompanyRepo) SetRelayProxySecret(
 // when none was generated.
 func (r *CompanyRepo) GetRelayProxySecret(ctx context.Context, companyID string) (*model.RelayProxySecret, error) {
 	var secret *string
-	var createdAt *time.Time
-	err := r.db.Pool.QueryRow(ctx,
-		`SELECT relay_proxy_secret, relay_proxy_secret_created_at FROM companies WHERE id = $1`, companyID,
-	).Scan(&secret, &createdAt)
+	var createdAt, previousExpiresAt *time.Time
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT relay_proxy_secret, relay_proxy_secret_created_at,
+			CASE WHEN relay_proxy_previous_secret_expires_at > NOW() THEN relay_proxy_previous_secret_expires_at END
+		FROM companies WHERE id = $1`, companyID,
+	).Scan(&secret, &createdAt, &previousExpiresAt)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, ErrNotFound
@@ -299,13 +310,33 @@ func (r *CompanyRepo) GetRelayProxySecret(ctx context.Context, companyID string)
 	if secret == nil || createdAt == nil {
 		return nil, nil
 	}
-	return &model.RelayProxySecret{Secret: *secret, CreatedAt: *createdAt}, nil
+	return &model.RelayProxySecret{Secret: *secret, CreatedAt: *createdAt, PreviousExpiresAt: previousExpiresAt}, nil
 }
 
-// IDByRelayProxySecret returns the company holding secret, or ErrNotFound.
+// RevokePreviousRelayProxySecret stops accepting the secret the last rotation
+// replaced, before its expiry.
+func (r *CompanyRepo) RevokePreviousRelayProxySecret(ctx context.Context, companyID string) error {
+	tag, err := r.db.Pool.Exec(ctx, `
+		UPDATE companies SET relay_proxy_previous_secret = NULL, relay_proxy_previous_secret_expires_at = NULL
+		WHERE id = $1`, companyID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IDByRelayProxySecret returns the company holding secret, as its current
+// secret or a previous one not expired yet, or ErrNotFound.
 func (r *CompanyRepo) IDByRelayProxySecret(ctx context.Context, secret string) (string, error) {
 	var id string
-	err := r.db.Pool.QueryRow(ctx, `SELECT id FROM companies WHERE relay_proxy_secret = $1`, secret).Scan(&id)
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT id FROM companies
+		WHERE relay_proxy_secret = $1
+			OR (relay_proxy_previous_secret = $1 AND relay_proxy_previous_secret_expires_at > NOW())`,
+		secret).Scan(&id)
 	if isNoRows(err) {
 		return "", ErrNotFound
 	}

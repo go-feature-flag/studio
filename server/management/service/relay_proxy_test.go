@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/internal/testutil"
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
@@ -25,22 +26,27 @@ func TestCompanyServiceRelayProxySecret(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 
-	first, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID)
+	first, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID, &model.RotateRelayProxySecretRequest{})
 	require.NoError(t, err)
 	assert.Regexp(t, regexp.MustCompile(`^goff_rp_[0-9a-f]{64}$`), first.Secret)
 	got, err = svc.RelayProxySecret(ctx, acme.ID)
 	require.NoError(t, err)
 	assert.Equal(t, first.Secret, got.Secret)
 
-	second, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID)
+	second, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID,
+		&model.RotateRelayProxySecretRequest{KeepPreviousSeconds: 3600})
 	require.NoError(t, err)
 	assert.NotEqual(t, first.Secret, second.Secret)
+	require.NotNil(t, second.PreviousExpiresAt)
+	assert.WithinDuration(t, time.Now().Add(time.Hour), *second.PreviousExpiresAt, time.Minute)
 
 	var after string
 	require.NoError(t, db.Pool.QueryRow(ctx, `SELECT after::text FROM audit_log
 		WHERE target_type = $1 AND target_id = $2 ORDER BY id DESC LIMIT 1`, model.AuditTargetCompany, acme.ID).Scan(&after))
 	assert.Contains(t, after, "relayProxySecretCreatedAt")
+	assert.Contains(t, after, "relayProxyPreviousSecretExpiresAt")
 	assert.NotContains(t, after, second.Secret, "the secret is never audited")
+	assert.NotContains(t, after, first.Secret, "the previous secret is never audited")
 	assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompany))
 
 	tests := []struct {
@@ -50,7 +56,7 @@ func TestCompanyServiceRelayProxySecret(t *testing.T) {
 		wantErr error
 	}{
 		{"current secret", second.Secret, acme.ID, nil},
-		{"rotated secret", first.Secret, "", service.ErrUnauthenticated},
+		{"previous secret in its grace period", first.Secret, acme.ID, nil},
 		{"unknown secret", "goff_rp_nope", "", service.ErrUnauthenticated},
 	}
 	for _, tt := range tests {
@@ -61,14 +67,42 @@ func TestCompanyServiceRelayProxySecret(t *testing.T) {
 		})
 	}
 
-	_, err = svc.RotateRelayProxySecret(ctx, admin.ID, "00000000-0000-0000-0000-000000000000")
+	require.NoError(t, svc.RevokePreviousRelayProxySecret(ctx, admin.ID, acme.ID))
+	_, err = svc.CompanyIDByRelayProxySecret(ctx, first.Secret)
+	assert.ErrorIs(t, err, service.ErrUnauthenticated, "a revoked previous secret is refused")
+	got, err = svc.RelayProxySecret(ctx, acme.ID)
+	require.NoError(t, err)
+	assert.Nil(t, got.PreviousExpiresAt)
+	assert.Equal(t, 3, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompany))
+
+	invalid := []struct {
+		name string
+		keep int
+	}{
+		{"negative", -1},
+		{"over 30 days", model.MaxRelayProxyPreviousSecretSeconds + 1},
+	}
+	for _, tt := range invalid {
+		t.Run("keepPreviousSeconds "+tt.name, func(t *testing.T) {
+			_, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID,
+				&model.RotateRelayProxySecretRequest{KeepPreviousSeconds: tt.keep})
+			var verrs model.ValidationErrors
+			require.ErrorAs(t, err, &verrs)
+			assert.Equal(t, "keepPreviousSeconds", verrs[0].Field)
+			assert.Equal(t, "keepPreviousSeconds must be between 0 and 2592000", verrs[0].Message)
+		})
+	}
+
+	unknown := "00000000-0000-0000-0000-000000000000"
+	_, err = svc.RotateRelayProxySecret(ctx, admin.ID, unknown, &model.RotateRelayProxySecretRequest{})
 	assert.ErrorIs(t, err, service.ErrNotFound)
+	assert.ErrorIs(t, svc.RevokePreviousRelayProxySecret(ctx, admin.ID, unknown), service.ErrNotFound)
 
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	_, err = svc.CompanyIDByRelayProxySecret(cancelled, second.Secret)
 	assert.ErrorIs(t, err, context.Canceled, "a DB failure is not an authentication failure")
-	_, err = svc.RotateRelayProxySecret(cancelled, admin.ID, acme.ID)
+	_, err = svc.RotateRelayProxySecret(cancelled, admin.ID, acme.ID, &model.RotateRelayProxySecretRequest{})
 	assert.ErrorIs(t, err, context.Canceled)
 }
 

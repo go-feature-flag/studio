@@ -55,7 +55,8 @@ func TestRequireRelayProxySecret(t *testing.T) {
 	companies := relayProxyCompanies(db)
 	acme := testutil.SeedCompany(t, db, "Acme")
 	admin := testutil.SeedUser(t, db, "admin@acme.com", "Admin", false)
-	secret, err := companies.RotateRelayProxySecret(t.Context(), admin.ID, acme.ID)
+	secret, err := companies.RotateRelayProxySecret(t.Context(), admin.ID, acme.ID,
+		&model.RotateRelayProxySecretRequest{})
 	require.NoError(t, err)
 
 	tests := []struct {

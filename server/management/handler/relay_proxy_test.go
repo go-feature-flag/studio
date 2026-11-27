@@ -18,37 +18,67 @@ func TestCompanyHandlerRelayProxySecret(t *testing.T) {
 	h := NewCompanyHandler(s.companySvc, s.teamSvc)
 	admin := testutil.SeedUser(t, s.db, "admin@acme.com", "Admin", false)
 	acme := testutil.SeedCompany(t, s.db, "Acme")
-	call := func(fn func(*echo.Context) error, method, companyID string) (int, any) {
-		c, rec := reqCtx(method, "")
+	call := func(fn func(*echo.Context) error, method, companyID, body string) (int, model.APIResponse) {
+		c, rec := reqCtx(method, body)
 		params(c, "companyId", companyID)
 		withClaims(c, admin.ID, false)
 		require.NoError(t, fn(c))
-		return rec.Code, decodeResp(t, rec).Data
+		if rec.Code == http.StatusNoContent {
+			return rec.Code, model.APIResponse{}
+		}
+		return rec.Code, decodeResp(t, rec)
 	}
 
-	code, data := call(h.GetRelayProxySecret, http.MethodGet, acme.ID)
+	code, resp := call(h.GetRelayProxySecret, http.MethodGet, acme.ID, "")
 	assert.Equal(t, http.StatusOK, code)
-	assert.Nil(t, data, "no secret yet")
+	assert.Nil(t, resp.Data, "no secret yet")
 
-	code, data = call(h.RotateRelayProxySecret, http.MethodPost, acme.ID)
+	// No body: no grace period, as onboarding does.
+	code, resp = call(h.RotateRelayProxySecret, http.MethodPost, acme.ID, "")
 	assert.Equal(t, http.StatusOK, code)
-	secret := dataMap(t, data)["secret"]
+	secret := dataMap(t, resp.Data)["secret"]
 	assert.NotEmpty(t, secret)
-	_, data = call(h.GetRelayProxySecret, http.MethodGet, acme.ID)
-	assert.Equal(t, secret, dataMap(t, data)["secret"])
+	assert.NotContains(t, dataMap(t, resp.Data), "previousExpiresAt")
+
+	code, resp = call(h.RotateRelayProxySecret, http.MethodPost, acme.ID, `{"keepPreviousSeconds":3600}`)
+	assert.Equal(t, http.StatusOK, code)
+	assert.NotEqual(t, secret, dataMap(t, resp.Data)["secret"])
+	assert.NotEmpty(t, dataMap(t, resp.Data)["previousExpiresAt"])
+	_, resp = call(h.GetRelayProxySecret, http.MethodGet, acme.ID, "")
+	assert.NotEmpty(t, dataMap(t, resp.Data)["previousExpiresAt"])
+
+	code, _ = call(h.RevokePreviousRelayProxySecret, http.MethodDelete, acme.ID, "")
+	assert.Equal(t, http.StatusNoContent, code)
+	_, resp = call(h.GetRelayProxySecret, http.MethodGet, acme.ID, "")
+	assert.NotContains(t, dataMap(t, resp.Data), "previousExpiresAt")
 
 	tests := []struct {
-		name string
-		fn   func(*echo.Context) error
-		verb string
+		name       string
+		fn         func(*echo.Context) error
+		verb       string
+		companyID  string
+		body       string
+		wantStatus int
+		wantErrors map[string][]string
 	}{
-		{"get for an unknown company", h.GetRelayProxySecret, http.MethodGet},
-		{"rotate for an unknown company", h.RotateRelayProxySecret, http.MethodPost},
+		{"get for an unknown company", h.GetRelayProxySecret, http.MethodGet, missingUUID, "", http.StatusNotFound, nil},
+		{"rotate for an unknown company", h.RotateRelayProxySecret, http.MethodPost, missingUUID, "", http.StatusNotFound, nil},
+		{"revoke for an unknown company", h.RevokePreviousRelayProxySecret, http.MethodDelete, missingUUID, "",
+			http.StatusNotFound, nil},
+		{"negative grace period", h.RotateRelayProxySecret, http.MethodPost, acme.ID, `{"keepPreviousSeconds":-1}`,
+			http.StatusBadRequest, map[string][]string{"keepPreviousSeconds": {"keepPreviousSeconds must be between 0 and 2592000"}}},
+		{"grace period over 30 days", h.RotateRelayProxySecret, http.MethodPost, acme.ID, `{"keepPreviousSeconds":2592001}`,
+			http.StatusBadRequest, map[string][]string{"keepPreviousSeconds": {"keepPreviousSeconds must be between 0 and 2592000"}}},
+		{"grace period not a number", h.RotateRelayProxySecret, http.MethodPost, acme.ID, `{"keepPreviousSeconds":"1h"}`,
+			http.StatusBadRequest, map[string][]string{"keepPreviousSeconds": {"must be a number"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			code, _ := call(tt.fn, tt.verb, missingUUID)
-			assert.Equal(t, http.StatusNotFound, code)
+			code, resp := call(tt.fn, tt.verb, tt.companyID, tt.body)
+			assert.Equal(t, tt.wantStatus, code)
+			if tt.wantErrors != nil {
+				assert.Equal(t, tt.wantErrors, resp.Errors)
+			}
 		})
 	}
 }

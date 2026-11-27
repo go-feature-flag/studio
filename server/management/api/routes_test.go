@@ -97,6 +97,9 @@ var routeCases = []struct {
 	{"POST", "/api/v1/companies/{company}/relay-proxy-secret", companyAdmin, "", 200},
 	{"POST", "/api/v1/companies/{company}/relay-proxy-secret", member, "", 403},
 	{"POST", "/api/v1/companies/{company}/relay-proxy-secret", outsider, "", 403},
+	{"DELETE", "/api/v1/companies/{company}/relay-proxy-secret/previous", companyAdmin, "", 204},
+	{"DELETE", "/api/v1/companies/{company}/relay-proxy-secret/previous", member, "", 403},
+	{"DELETE", "/api/v1/companies/{company}/relay-proxy-secret/previous", outsider, "", 403},
 	// Relay proxy routes take the company's secret (see TestRoutesRelayProxy), never a session.
 	{"GET", "/api/v1/relay-proxy/flagsets.json", anon, "", 401},
 	{"GET", "/api/v1/relay-proxy/flagsets.json", superAdmin, "", 401},

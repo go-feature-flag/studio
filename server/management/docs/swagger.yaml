@@ -670,6 +670,12 @@ definitions:
     properties:
       createdAt:
         type: string
+      previousExpiresAt:
+        description: |-
+          PreviousExpiresAt is when the secret the last rotation replaced stops
+          being accepted; absent when there is none or it expired. That secret
+          itself is never returned.
+        type: string
       secret:
         example: goff_rp_4f9c…
         type: string
@@ -695,6 +701,17 @@ definitions:
     properties:
       comment:
         type: string
+    type: object
+  model.RotateRelayProxySecretRequest:
+    properties:
+      keepPreviousSeconds:
+        description: |-
+          KeepPreviousSeconds keeps the current secret valid this long next to the
+          new one; 0 (the default) revokes it at once.
+        example: 86400
+        maximum: 2592000
+        minimum: 0
+        type: integer
     type: object
   model.Team:
     properties:
@@ -1383,12 +1400,22 @@ paths:
       tags:
       - companies
     post:
+      consumes:
+      - application/json
+      description: |-
+        The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);
+        a secret replaced by an earlier rotation is revoked at once.
       parameters:
       - description: company id
         in: path
         name: companyId
         required: true
         type: string
+      - description: rotation options
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/model.RotateRelayProxySecretRequest'
       produces:
       - application/json
       responses:
@@ -1401,6 +1428,10 @@ paths:
                 data:
                   $ref: '#/definitions/model.RelayProxySecret'
               type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/model.APIResponse'
         "401":
           description: no valid session
           schema:
@@ -1413,8 +1444,34 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/model.APIResponse'
-      summary: Generate a new relay proxy secret (company admin); relay proxies using
-        the old one stop syncing
+      summary: Generate a new relay proxy secret (company admin)
+      tags:
+      - companies
+  /companies/{companyId}/relay-proxy-secret/previous:
+    delete:
+      parameters:
+      - description: company id
+        in: path
+        name: companyId
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: no valid session
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+      summary: Revoke the relay proxy secret a rotation replaced, before its expiry
+        (company admin)
       tags:
       - companies
   /companies/{companyId}/teams:

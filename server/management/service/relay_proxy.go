@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/gofeatureflag/flag-management-system/server/management/repository"
@@ -15,21 +17,44 @@ func (s *CompanyService) RelayProxySecret(ctx context.Context, companyID string)
 }
 
 // RotateRelayProxySecret generates a new relay proxy secret for the company.
-// Relay proxies still sending the old one stop syncing.
+// The replaced one stays valid for req.KeepPreviousSeconds, so relay proxies
+// can move to the new one; a secret replaced earlier is revoked at once.
 func (s *CompanyService) RotateRelayProxySecret(
-	ctx context.Context, actorID, companyID string,
+	ctx context.Context, actorID, companyID string, req *model.RotateRelayProxySecretRequest,
 ) (*model.RelayProxySecret, error) {
-	rs, err := s.companies.SetRelayProxySecret(ctx, companyID, newSecret("goff_rp_"))
+	if req.KeepPreviousSeconds < 0 || req.KeepPreviousSeconds > model.MaxRelayProxyPreviousSecretSeconds {
+		msg := fmt.Sprintf("keepPreviousSeconds must be between 0 and %d", model.MaxRelayProxyPreviousSecretSeconds)
+		return nil, model.ValidationErrors{{Field: "keepPreviousSeconds", Message: msg}}
+	}
+	keep := time.Duration(req.KeepPreviousSeconds) * time.Second
+	rs, err := s.companies.SetRelayProxySecret(ctx, companyID, newSecret("goff_rp_"), keep)
 	if err != nil {
 		return nil, writeError(err)
 	}
-	// The secret itself is never logged, only when it changed.
+	// The secrets themselves are never logged, only when they changed.
 	_ = s.audit.Record(ctx, nil, repository.AuditInput{
 		ActorUserID: &actorID, CompanyID: &companyID,
 		Action: model.AuditActionUpdate, TargetType: model.AuditTargetCompany, TargetID: companyID,
-		After: map[string]any{"relayProxySecretCreatedAt": rs.CreatedAt},
+		After: map[string]any{
+			"relayProxySecretCreatedAt":         rs.CreatedAt,
+			"relayProxyPreviousSecretExpiresAt": rs.PreviousExpiresAt,
+		},
 	})
 	return rs, nil
+}
+
+// RevokePreviousRelayProxySecret stops accepting the secret the last rotation
+// replaced, before its expiry. Revoking when there is none is a no-op.
+func (s *CompanyService) RevokePreviousRelayProxySecret(ctx context.Context, actorID, companyID string) error {
+	if err := s.companies.RevokePreviousRelayProxySecret(ctx, companyID); err != nil {
+		return writeError(err)
+	}
+	_ = s.audit.Record(ctx, nil, repository.AuditInput{
+		ActorUserID: &actorID, CompanyID: &companyID,
+		Action: model.AuditActionUpdate, TargetType: model.AuditTargetCompany, TargetID: companyID,
+		After: map[string]any{"relayProxyPreviousSecretExpiresAt": nil},
+	})
+	return nil
 }
 
 // CompanyIDByRelayProxySecret returns the company a relay proxy secret
