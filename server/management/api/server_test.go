@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +53,36 @@ func TestLogoutUnderAPIPrefixWithoutSession(t *testing.T) {
 	}
 	require.NotNil(t, cleared, "session cookie must be cleared")
 	assert.Less(t, cleared.MaxAge, 0)
+}
+
+func TestReady(t *testing.T) {
+	tests := []struct {
+		name     string
+		ready    func(context.Context) error
+		wantCode int
+		wantBody string
+	}{
+		{"database answers", func(context.Context) error { return nil }, http.StatusOK, `{"data":{"status":"ok"}}`},
+		{
+			"database down", func(context.Context) error { return errors.New("connection refused") },
+			http.StatusServiceUnavailable, `{"message":"not ready"}`,
+		},
+		{
+			"ping gets a deadline", func(ctx context.Context) error {
+				_, ok := ctx.Deadline()
+				assert.True(t, ok, "ping must not hang on an unreachable database")
+				return nil
+			}, http.StatusOK, `{"data":{"status":"ok"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := api.New(config.Config{}, slog.New(slog.DiscardHandler), api.Handlers{Ready: tt.ready}, api.Services{})
+			rec := platformServe(e, httptest.NewRequest(http.MethodGet, "/ready", nil))
+			assert.Equal(t, tt.wantCode, rec.Code)
+			assert.JSONEq(t, tt.wantBody, rec.Body.String())
+		})
+	}
 }
 
 func TestCORSAllowsOnlyTheWebuiOrigin(t *testing.T) {

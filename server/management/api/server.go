@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -27,6 +28,8 @@ type Handlers struct {
 	Audit      *handler.AuditHandler
 	Onboarding *handler.OnboardingHandler
 	Config     *handler.ConfigHandler
+	// Ready reports whether the server can serve traffic (the database answers).
+	Ready func(context.Context) error
 }
 
 type Services struct {
@@ -96,9 +99,7 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	e.Use(emw.BodyLimit(256 * 1024))
 	e.Use(emw.ContextTimeout(30 * time.Second))
 
-	e.GET("/health", func(c *echo.Context) error {
-		return c.JSON(200, model.APIResponse{Data: map[string]string{"status": "ok"}})
-	})
+	registerProbes(e, h.Ready)
 
 	// Authenticated and auth responses must not be cached: they carry API keys,
 	// session cookies, or (the callback URL) the one-time code. They are JSON
@@ -200,4 +201,21 @@ func webuiOrigin(redirect string) string {
 		host = strings.TrimSuffix(host, ":443")
 	}
 	return u.Scheme + "://" + host
+}
+
+func registerProbes(e *echo.Echo, ready func(context.Context) error) {
+	e.GET("/health", func(c *echo.Context) error {
+		return c.JSON(200, model.APIResponse{Data: map[string]string{"status": "ok"}})
+	})
+	// Unlike /health (liveness), /ready fails while the database is down so the
+	// orchestrator stops routing traffic here instead of restarting the process.
+	e.GET("/ready", func(c *echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+		if err := ready(ctx); err != nil {
+			c.Logger().Warn("readiness check failed", "error", err)
+			return c.JSON(http.StatusServiceUnavailable, model.APIResponse{Message: "not ready"})
+		}
+		return c.JSON(http.StatusOK, model.APIResponse{Data: map[string]string{"status": "ok"}})
+	})
 }

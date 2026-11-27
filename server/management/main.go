@@ -106,7 +106,7 @@ func run(ctx context.Context, args []string) error {
 	srv := &http.Server{
 		Addr: addr,
 		Handler: otelhttp.NewHandler(e, "http.server",
-			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/health" })),
+			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/health" && r.URL.Path != "/ready" })),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -165,6 +165,7 @@ func newRouter(ctx context.Context, cfg *config.Config, log *slog.Logger, db *re
 		Onboarding: handler.NewOnboardingHandler(
 			service.NewOnboardingService(companyRepo, userRepo, auditRepo, mono)),
 		Config: handler.NewConfigHandler(*cfg),
+		Ready:  db.Pool.Ping,
 	}
 	services := api.Services{Auth: authSvc, Companies: companySvc, Teams: teamSvc, Flagsets: flagsetSvc, Flags: flagSvc}
 	return api.New(*cfg, log, handlers, services), nil

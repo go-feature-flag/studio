@@ -5,7 +5,7 @@ The endpoint-by-endpoint reference is the OpenAPI spec generated from the handle
 `server.enableSwagger` is on (it needs a session too). This page covers what the spec doesn't:
 how to log in, and the conventions every endpoint follows.
 
-The API lives under `/api/v1`. A few routes sit outside it: `GET /health` and the login flow.
+The API lives under `/api/v1`. A few routes sit outside it: `GET /health`, `GET /ready` and the login flow.
 
 ## Authentication
 
