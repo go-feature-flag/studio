@@ -128,10 +128,10 @@ origin is the only one allowed to call the API with credentials (CORS) and to se
 GO Feature Flag relay proxies (v1.59.0 or later) can load their flagsets from Studio, so
 flag changes reach them without a configuration file to maintain.
 
-1. As a company admin, generate the company's relay proxy secret:
-   `POST /api/v1/companies/{companyId}/relay-proxy-secret`.
-2. Point the relay proxy at Studio in its `goff-proxy.yaml`, and remove any `flagSets` key
-   from that file (the relay proxy refuses both together):
+1. As a company admin, open **Company → Relay proxy** and generate the company's relay proxy
+   secret (`POST /api/v1/companies/{companyId}/relay-proxy-secret`).
+2. Copy the snippet shown there into the relay proxy's `goff-proxy.yaml`, and remove any
+   `flagSets` key from that file (the relay proxy refuses both together):
 
    ```yaml
    studio:
@@ -147,7 +147,11 @@ flags back from Studio with an `http` retriever, on the host the relay proxy use
 the relay proxy can reach (a service or network name works), and keep `/api/v1/relay-proxy`
 reachable through your reverse proxy.
 
-Generating a new secret revokes the old one: relay proxies still using it stop syncing until
+Flag changes reach relay proxies on their next poll of each flagset. A running relay proxy
+also applies new or removed flagsets and API keys, but a change to a flagset's settings or
+notifiers only applies when it restarts.
+
+Rotating the secret revokes the old one: relay proxies still using it stop syncing until
 their configuration has the new secret.
 
 ## Observability

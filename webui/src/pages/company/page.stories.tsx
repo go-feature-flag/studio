@@ -19,3 +19,15 @@ type Story = StoryObj<typeof meta>;
 export const Details: Story = { args: { section: "details" } };
 export const Members: Story = { args: { section: "members" } };
 export const Teams: Story = { args: { section: "teams" } };
+export const RelayProxy: Story = {
+  args: { section: "relayProxy" },
+  parameters: {
+    data: {
+      "/companies/acme/relay-proxy-secret": { secret: "goff_rp_4f9c2b7e", createdAt: "2026-11-26T10:00:00Z" },
+    },
+  },
+};
+export const RelayProxyNoSecret: Story = {
+  args: { section: "relayProxy" },
+  parameters: { data: { "/companies/acme/relay-proxy-secret": null } },
+};
