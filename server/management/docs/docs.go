@@ -841,7 +841,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);\na secret replaced by an earlier rotation is revoked at once.",
+                "description": "The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);\nrotation is blocked until any previous secret expires or is explicitly revoked.",
                 "consumes": [
                     "application/json"
                 ],
@@ -908,6 +908,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/model.APIResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "previous secret is still valid",
                         "schema": {
                             "$ref": "#/definitions/model.APIResponse"
                         }

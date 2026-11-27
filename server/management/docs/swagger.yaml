@@ -1410,7 +1410,7 @@ paths:
       - application/json
       description: |-
         The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);
-        a secret replaced by an earlier rotation is revoked at once.
+        rotation is blocked until any previous secret expires or is explicitly revoked.
       parameters:
       - description: company id
         in: path
@@ -1448,6 +1448,10 @@ paths:
             $ref: '#/definitions/model.APIResponse'
         "404":
           description: Not Found
+          schema:
+            $ref: '#/definitions/model.APIResponse'
+        "409":
+          description: previous secret is still valid
           schema:
             $ref: '#/definitions/model.APIResponse'
       summary: Generate a new relay proxy secret (company admin)

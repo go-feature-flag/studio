@@ -105,6 +105,12 @@ func TestRoutesRelayProxyRotationGracePeriod(t *testing.T) {
 	require.NotNil(t, body.Data.PreviousSecretEnd)
 	assert.Equal(t, old[len(old)-5:], *body.Data.PreviousSecretEnd, "only its last 5 characters")
 
+	for _, options := range []string{"", `{"keepPreviousSeconds":0}`, `{"keepPreviousSeconds":3600}`} {
+		blocked := f.do(e, "POST", "/api/v1/companies/{company}/relay-proxy-secret", companyAdmin, options)
+		assert.Equal(t, http.StatusConflict, blocked.Code, blocked.Body.String())
+		assert.Contains(t, blocked.Body.String(), "previous relay proxy secret is still valid")
+	}
+
 	for _, s := range []string{old, secret} {
 		assert.Equal(t, http.StatusOK, asRelayProxy("/api/v1/relay-proxy/flagsets.json", s))
 		assert.Equal(t, http.StatusOK, asRelayProxy(flagsPath, s))

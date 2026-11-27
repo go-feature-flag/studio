@@ -10,6 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// ErrRelayProxyPreviousSecretActive prevents a rotation from revoking a secret
+// that relay proxies may still be using during its grace period.
+var ErrRelayProxyPreviousSecretActive = errors.New("previous relay proxy secret is still valid")
+
 type CompanyRepo struct{ db *DB }
 
 func NewCompanyRepo(db *DB) *CompanyRepo { return &CompanyRepo{db: db} }
@@ -265,27 +269,33 @@ func (r *CompanyRepo) Membership(ctx context.Context, userID string) (*model.Com
 }
 
 // SetRelayProxySecret replaces the company's relay proxy secret. With
-// keepPrevious > 0 the replaced secret stays valid that long; any older one,
-// and the replaced one otherwise, is revoked at once.
+// keepPrevious > 0 the replaced secret stays valid that long. Rotation is
+// blocked until an existing previous secret expires or is explicitly revoked.
 func (r *CompanyRepo) SetRelayProxySecret(
 	ctx context.Context, companyID, secret string, keepPrevious time.Duration,
 ) (*model.RelayProxySecret, error) {
 	s := model.RelayProxySecret{Secret: secret}
 	// SET expressions read the row before the update, so the previous secret
-	// is the one being replaced.
+	// is the one being replaced. The predicate is rechecked after concurrent
+	// updates, so a rotation cannot overwrite an active previous secret.
 	err := r.db.Pool.QueryRow(ctx, `
 		UPDATE companies SET
 			relay_proxy_previous_secret = CASE WHEN $3 > 0 THEN relay_proxy_secret END,
 			relay_proxy_previous_secret_expires_at =
 				CASE WHEN $3 > 0 AND relay_proxy_secret IS NOT NULL THEN NOW() + make_interval(secs => $3) END,
 			relay_proxy_secret = $2, relay_proxy_secret_created_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND (relay_proxy_previous_secret IS NULL
+			OR relay_proxy_previous_secret_expires_at IS NULL
+			OR relay_proxy_previous_secret_expires_at <= NOW())
 		RETURNING relay_proxy_secret_created_at, relay_proxy_previous_secret_expires_at,
 			RIGHT(relay_proxy_previous_secret, 5)`,
 		companyID, secret, keepPrevious.Seconds()).Scan(&s.CreatedAt, &s.PreviousExpiresAt, &s.PreviousSecretEnd)
 	if err != nil {
 		if isNoRows(err) {
-			return nil, ErrNotFound
+			if _, lookupErr := r.GetByID(ctx, companyID); lookupErr != nil {
+				return nil, lookupErr
+			}
+			return nil, ErrRelayProxyPreviousSecretActive
 		}
 		return nil, err
 	}

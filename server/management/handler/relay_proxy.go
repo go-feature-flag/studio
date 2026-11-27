@@ -29,7 +29,7 @@ func (h *CompanyHandler) GetRelayProxySecret(c *echo.Context) error {
 // RotateRelayProxySecret godoc
 // @Summary     Generate a new relay proxy secret (company admin)
 // @Description The replaced secret stays valid for keepPreviousSeconds (default 0: revoked at once);
-// @Description a secret replaced by an earlier rotation is revoked at once.
+// @Description rotation is blocked until any previous secret expires or is explicitly revoked.
 // @Tags        companies
 // @Accept      json
 // @Produce     json
@@ -40,6 +40,7 @@ func (h *CompanyHandler) GetRelayProxySecret(c *echo.Context) error {
 // @Failure     401 {object} model.APIResponse "no valid session"
 // @Failure     403 {object} model.APIResponse
 // @Failure     404 {object} model.APIResponse
+// @Failure     409 {object} model.APIResponse "previous secret is still valid"
 // @Router      /companies/{companyId}/relay-proxy-secret [post]
 func (h *CompanyHandler) RotateRelayProxySecret(c *echo.Context) error {
 	// Bind leaves req zero for an empty body: no grace period.

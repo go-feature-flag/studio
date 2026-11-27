@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useCustom, useCustomMutation, useTranslate } from "@refinedev/core";
 import { Trans } from "react-i18next";
 import { ClockIcon, InfoIcon, KeyRound, RefreshCw } from "lucide-react";
@@ -36,6 +36,7 @@ import {
 import { errMessage } from "@/lib/errors";
 import { formatExactDateTime, formatRelativeTime } from "@/lib/relative-time";
 import { API_URL } from "@/providers/constants";
+import { HttpError } from "@/providers/http";
 
 // previousExpiresAt: when the secret the last rotation replaced stops working;
 // previousSecretEnd: its last 5 characters, to recognize it.
@@ -77,6 +78,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
     queryOptions: { queryKey: ["relay-proxy-secret", companyId] },
   });
   const { mutate, mutation } = useCustomMutation();
+  const rotationBlockedId = useId();
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [keepSeconds, setKeepSeconds] = useState(DEFAULT_KEEP);
@@ -84,16 +86,23 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
   const secret = (query.data?.data as RelayProxySecret | null | undefined) ?? null;
   const pending = mutation.isPending;
 
-  // The server stops returning an expired previous secret; this hides it on
-  // time on a page left open. Past MAX_TIMEOUT, the next load does it.
   const previousExpiresAt = secret?.previousExpiresAt;
   const previousValid = !!previousExpiresAt && Date.parse(previousExpiresAt) > now;
   const previousSecret = `*****${secret?.previousSecretEnd ?? ""}`;
   useEffect(() => {
     if (!previousExpiresAt) return;
-    const delay = Date.parse(previousExpiresAt) - Date.now();
-    if (delay <= 0 || delay > MAX_TIMEOUT) return;
-    const timer = setTimeout(() => setNow(Date.now()), delay);
+    const expiresAt = Date.parse(previousExpiresAt);
+    if (!Number.isFinite(expiresAt)) return;
+    // Long grace periods exceed the browser's timeout limit. Recheck in chunks
+    // so a page left open still enables rotation when the previous secret expires.
+    let timer: ReturnType<typeof setTimeout>;
+    const update = () => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+      const remaining = expiresAt - currentTime;
+      if (remaining > 0) timer = setTimeout(update, Math.min(remaining, MAX_TIMEOUT));
+    };
+    timer = setTimeout(update, Math.max(0, Math.min(expiresAt - Date.now(), MAX_TIMEOUT)));
     return () => clearTimeout(timer);
   }, [previousExpiresAt]);
 
@@ -108,7 +117,10 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
           setNow(Date.now());
           query.refetch();
         },
-        onError: (err) => toast.error(t("company.relayProxy.generateError"), { description: errMessage(err) }),
+        onError: (err) => {
+          toast.error(t("company.relayProxy.generateError"), { description: errMessage(err) });
+          if (err instanceof HttpError && err.status === 409) query.refetch();
+        },
       },
     );
 
@@ -159,6 +171,19 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            <Alert>
+              <InfoIcon />
+              <AlertDescription>{t("company.relayProxy.hint")}</AlertDescription>
+            </Alert>
+            <div className="overflow-hidden rounded-md border">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-1.5">
+                <span className="font-mono text-xs font-medium text-muted-foreground">
+                  goff-proxy.yaml
+                </span>
+                <CopyButton value={config} label={t("common.copy")} />
+              </div>
+              <CodeBlock code={config} language="yaml" rounded={false} />
+            </div>
             {previousValid && (
               <Alert variant="warning">
                 <ClockIcon />
@@ -180,24 +205,27 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
                 </AlertDescription>
               </Alert>
             )}
-            <div className="overflow-hidden rounded-md border">
-              <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-3 py-1.5">
-                <span className="font-mono text-xs font-medium text-muted-foreground">
-                  goff-proxy.yaml
-                </span>
-                <CopyButton value={config} label={t("common.copy")} />
-              </div>
-              <CodeBlock code={config} language="yaml" rounded={false} />
-            </div>
-            <p className="text-sm text-muted-foreground">{t("company.relayProxy.hint")}</p>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 {t("company.relayProxy.createdAt", { date: formatExactDateTime(secret.createdAt) })}
               </span>
-              <Button variant="outline" onClick={openRotate}>
-                <RefreshCw className="h-4 w-4" />
-                {t("company.relayProxy.rotate")}
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {previousValid && (
+                  <p id={rotationBlockedId} className="flex max-w-xs items-start gap-1.5 text-sm text-foreground">
+                    <InfoIcon className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                    {t("company.relayProxy.rotationBlocked")}
+                  </p>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={openRotate}
+                  disabled={pending || previousValid}
+                  aria-describedby={previousValid ? rotationBlockedId : undefined}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {t("company.relayProxy.rotate")}
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -229,11 +257,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
             </Select>
             {previousValid && (
               <p className="text-sm text-muted-foreground">
-                <Trans
-                  i18nKey="company.relayProxy.rotateRevokesPrevious"
-                  values={{ secret: previousSecret, date: formatExactDateTime(previousExpiresAt) }}
-                  components={{ code: <CodeChip /> }}
-                />
+                {t("company.relayProxy.rotationBlocked")}
               </p>
             )}
           </div>
@@ -243,7 +267,7 @@ export function CompanyRelayProxyCard({ companyId }: { companyId: string }) {
             <Button
               variant="destructive"
               onClick={() => generate({ keepPreviousSeconds: Number(keepSeconds) })}
-              disabled={pending}
+              disabled={pending || previousValid}
             >
               {pending ? t("company.relayProxy.generating") : t("company.relayProxy.rotate")}
             </Button>

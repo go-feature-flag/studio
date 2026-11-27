@@ -47,6 +47,13 @@ func TestCompanyHandlerRelayProxySecret(t *testing.T) {
 	_, resp = call(h.GetRelayProxySecret, http.MethodGet, acme.ID, "")
 	assert.NotEmpty(t, dataMap(t, resp.Data)["previousExpiresAt"])
 
+	for _, body := range []string{"", `{"keepPreviousSeconds":0}`, `{"keepPreviousSeconds":3600}`} {
+		code, blocked := call(h.RotateRelayProxySecret, http.MethodPost, acme.ID, body)
+		assert.Equal(t, http.StatusConflict, code)
+		assert.Equal(t, "previous relay proxy secret is still valid; wait for it to expire or revoke it before rotating again",
+			blocked.Message)
+	}
+
 	code, _ = call(h.RevokePreviousRelayProxySecret, http.MethodDelete, acme.ID, "")
 	assert.Equal(t, http.StatusNoContent, code)
 	_, resp = call(h.GetRelayProxySecret, http.MethodGet, acme.ID, "")

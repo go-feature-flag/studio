@@ -49,6 +49,19 @@ func TestCompanyServiceRelayProxySecret(t *testing.T) {
 	assert.NotContains(t, after, first.Secret, "the previous secret is never audited")
 	assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompany))
 
+	for _, keep := range []int{0, 3600} {
+		rejected, err := svc.RotateRelayProxySecret(ctx, admin.ID, acme.ID,
+			&model.RotateRelayProxySecretRequest{KeepPreviousSeconds: keep})
+		assert.ErrorIs(t, err, service.ErrConflict)
+		assert.Equal(t, "previous relay proxy secret is still valid; wait for it to expire or revoke it before rotating again",
+			service.PublicMessage(err))
+		assert.Nil(t, rejected)
+	}
+	assert.Equal(t, 2, auditCount(t, db, model.AuditActionUpdate, model.AuditTargetCompany))
+	got, err = svc.RelayProxySecret(ctx, acme.ID)
+	require.NoError(t, err)
+	assert.Equal(t, second, got)
+
 	tests := []struct {
 		name    string
 		secret  string

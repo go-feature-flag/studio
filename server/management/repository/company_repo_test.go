@@ -227,8 +227,10 @@ func TestCompanyRepoRelayProxySecret(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, second, got)
 
-	// Rotating again keeps goff_rp_two and revokes goff_rp_one at once.
+	// Explicit revocation permits another rotation.
+	require.NoError(t, repo.RevokePreviousRelayProxySecret(ctx, acme.ID))
 	set(acme.ID, "goff_rp_three", time.Hour)
+	require.NoError(t, repo.RevokePreviousRelayProxySecret(ctx, acme.ID))
 	// Without a grace period, goff_rp_three is revoked at once.
 	four := set(acme.ID, "goff_rp_four", 0)
 	assert.Nil(t, four.PreviousExpiresAt)
@@ -339,4 +341,78 @@ func TestCompanyRepoCreateWithAdminAttachUnassigned(t *testing.T) {
 	require.NotNil(t, mem, "a user who logged in before the company existed joins it")
 	assert.Equal(t, c.ID, mem.CompanyID)
 	assert.Equal(t, model.CompanyRoleMember, mem.Role)
+}
+
+func TestCompanyRepoRelayProxyRotationBlocked(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewCompanyRepo(db)
+	ctx := t.Context()
+	acme := testutil.SeedCompany(t, db, "Acme")
+	_, err := repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_old", 0)
+	require.NoError(t, err)
+	before, err := repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_current", time.Hour)
+	require.NoError(t, err)
+	tests := []struct {
+		name string
+		keep time.Duration
+	}{
+		{"without grace period", 0}, {"with grace period", time.Hour},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_rejected", tt.keep)
+			assert.ErrorIs(t, err, repository.ErrRelayProxyPreviousSecretActive)
+			assert.Nil(t, got)
+			after, err := repo.GetRelayProxySecret(ctx, acme.ID)
+			require.NoError(t, err)
+			assert.Equal(t, before, after)
+			for _, secret := range []string{"goff_rp_old", "goff_rp_current"} {
+				id, err := repo.IDByRelayProxySecret(ctx, secret)
+				require.NoError(t, err)
+				assert.Equal(t, acme.ID, id)
+			}
+			_, err = repo.IDByRelayProxySecret(ctx, "goff_rp_rejected")
+			assert.ErrorIs(t, err, repository.ErrNotFound)
+		})
+	}
+}
+
+func TestCompanyRepoRelayProxyConcurrentRotation(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewCompanyRepo(db)
+	ctx := t.Context()
+	acme := testutil.SeedCompany(t, db, "Acme")
+	_, err := repo.SetRelayProxySecret(ctx, acme.ID, "goff_rp_original", 0)
+	require.NoError(t, err)
+	type result struct {
+		secret *model.RelayProxySecret
+		err    error
+	}
+	results := make(chan result, 2)
+	start := make(chan struct{})
+	for _, secret := range []string{"goff_rp_a", "goff_rp_b"} {
+		go func() {
+			<-start
+			s, err := repo.SetRelayProxySecret(ctx, acme.ID, secret, time.Hour)
+			results <- result{s, err}
+		}()
+	}
+	close(start)
+	successes := 0
+	for range 2 {
+		r := <-results
+		if r.err != nil {
+			assert.ErrorIs(t, r.err, repository.ErrRelayProxyPreviousSecretActive)
+			assert.Nil(t, r.secret)
+		} else {
+			successes++
+			got, err := repo.GetRelayProxySecret(ctx, acme.ID)
+			require.NoError(t, err)
+			assert.Equal(t, r.secret, got)
+		}
+	}
+	assert.Equal(t, 1, successes)
+	id, err := repo.IDByRelayProxySecret(ctx, "goff_rp_original")
+	require.NoError(t, err)
+	assert.Equal(t, acme.ID, id)
 }

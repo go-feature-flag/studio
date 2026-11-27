@@ -18,7 +18,8 @@ func (s *CompanyService) RelayProxySecret(ctx context.Context, companyID string)
 
 // RotateRelayProxySecret generates a new relay proxy secret for the company.
 // The replaced one stays valid for req.KeepPreviousSeconds, so relay proxies
-// can move to the new one; a secret replaced earlier is revoked at once.
+// can move to the new one. An active previous secret must expire or be
+// explicitly revoked before another rotation.
 func (s *CompanyService) RotateRelayProxySecret(
 	ctx context.Context, actorID, companyID string, req *model.RotateRelayProxySecretRequest,
 ) (*model.RelayProxySecret, error) {
@@ -28,6 +29,10 @@ func (s *CompanyService) RotateRelayProxySecret(
 	}
 	keep := time.Duration(req.KeepPreviousSeconds) * time.Second
 	rs, err := s.companies.SetRelayProxySecret(ctx, companyID, newSecret("goff_rp_"), keep)
+	if errors.Is(err, repository.ErrRelayProxyPreviousSecretActive) {
+		return nil, &publicError{kind: ErrConflict, cause: err,
+			msg: "previous relay proxy secret is still valid; wait for it to expire or revoke it before rotating again"}
+	}
 	if err != nil {
 		return nil, writeError(err)
 	}

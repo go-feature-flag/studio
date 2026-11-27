@@ -167,8 +167,10 @@ also applies new or removed flagsets and API keys, with two current relay-proxy 
 To rotate the secret without downtime, choose how long the current one stays valid (up to 30
 days) when you click **Rotate secret**. Both secrets work during that time, so update each relay
 proxy's configuration with the new one and restart it; the page shows when the old secret
-expires and can revoke it early. Rotating again during that time revokes the older secret at
-once. Rotating with "Revoke immediately" cuts off relay proxies still using the old secret.
+expires and lets you revoke it early. Another rotation is blocked until that previous secret
+expires or you explicitly revoke it. Rotating with "Revoke immediately" prevents relay proxies
+using the old secret from fetching further configuration and flags; it does not stop them
+evaluating cached flags.
 
 ## Observability
 

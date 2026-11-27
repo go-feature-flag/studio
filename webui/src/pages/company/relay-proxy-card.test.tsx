@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { HttpError } from "@/providers/http";
 
 type MutateCallbacks = { onSuccess: () => void; onError: (err: unknown) => void };
 
@@ -120,16 +121,16 @@ describe("CompanyRelayProxyCard", () => {
 
   it("shows until when the previous secret is valid, and revokes it after confirming", async () => {
     h.data = { ...secret, previousExpiresAt: inAnHour(), previousSecretEnd: "1d0e3" };
-    render(<CompanyRelayProxyCard companyId={companyId} />);
+    const { rerender } = render(<CompanyRelayProxyCard companyId={companyId} />);
     expect(alertText()).toBeInTheDocument();
     // Only the end of the previous secret, masked, as inline code.
     expect(screen.getByText("*****1d0e3").tagName).toBe("CODE");
 
-    // Rotating again warns that the previous secret goes away.
-    await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.rotate" }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent(/The previous secret \*{5}1d0e3, still valid until .+, is revoked now\./);
-    await userEvent.click(screen.getByRole("button", { name: "common.cancel" }));
+    const rotate = screen.getByRole("button", { name: "company.relayProxy.rotate" });
+    expect(rotate).toBeDisabled();
+    expect(rotate).toHaveAccessibleDescription("company.relayProxy.rotationBlocked");
+    await userEvent.click(rotate);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.revokePrevious" }));
     expect(h.mutate).not.toHaveBeenCalled();
@@ -144,25 +145,60 @@ describe("CompanyRelayProxyCard", () => {
     expect(h.toastSuccess).toHaveBeenCalledWith("company.relayProxy.previousRevoked");
     expect(h.refetch).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    h.data = secret;
+    rerender(<CompanyRelayProxyCard companyId={companyId} />);
+    expect(screen.getByRole("button", { name: "company.relayProxy.rotate" })).toBeEnabled();
   });
 
-  it("drops the previous secret once it expires", () => {
+  it.each([
+    { name: "short grace period", duration: 1000 },
+    { name: "30-day grace period", duration: 30 * 24 * 60 * 60 * 1000 },
+  ])("enables rotation at expiry for a $name", ({ duration }) => {
     vi.useFakeTimers();
     try {
-      h.data = { ...secret, previousExpiresAt: new Date(Date.now() + 1000).toISOString() };
+      h.data = { ...secret, previousExpiresAt: new Date(Date.now() + duration).toISOString() };
       render(<CompanyRelayProxyCard companyId={companyId} />);
+      const rotate = screen.getByRole("button", { name: "company.relayProxy.rotate" });
+      expect(rotate).toBeDisabled();
+      act(() => vi.advanceTimersByTime(duration - 1));
+      expect(rotate).toBeDisabled();
       expect(alertText()).toBeInTheDocument();
-      act(() => vi.advanceTimersByTime(1001));
+      act(() => vi.advanceTimersByTime(1));
+      expect(rotate).toBeEnabled();
       expect(alertText()).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
   });
 
+  it("disables an open confirmation if refreshed data contains a valid previous secret", async () => {
+    const { rerender } = render(<CompanyRelayProxyCard companyId={companyId} />);
+    await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.rotate" }));
+    h.data = { ...secret, previousExpiresAt: inAnHour() };
+    rerender(<CompanyRelayProxyCard companyId={companyId} />);
+    expect(confirmButton("company.relayProxy.rotate")).toBeDisabled();
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("company.relayProxy.rotationBlocked");
+    await userEvent.click(confirmButton("company.relayProxy.rotate"));
+    expect(h.mutate).not.toHaveBeenCalled();
+  });
+
+  it("refreshes stale secret state after a rotation conflict", async () => {
+    render(<CompanyRelayProxyCard companyId={companyId} />);
+    await userEvent.click(screen.getByRole("button", { name: "company.relayProxy.rotate" }));
+    await userEvent.click(confirmButton("company.relayProxy.rotate"));
+    const [, callbacks] = lastMutate();
+    act(() => callbacks.onError(new HttpError("previous secret still valid", 409)));
+    expect(h.toastError).toHaveBeenCalledWith("company.relayProxy.generateError", {
+      description: "previous secret still valid",
+    });
+    expect(h.refetch).toHaveBeenCalledOnce();
+  });
+
   it("does not mention an already expired previous secret", () => {
     h.data = { ...secret, previousExpiresAt: "2020-01-01T00:00:00Z" };
     render(<CompanyRelayProxyCard companyId={companyId} />);
     expect(alertText()).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "company.relayProxy.rotate" })).toBeEnabled();
   });
 
   it("disables the buttons while a request is pending", () => {
