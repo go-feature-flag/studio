@@ -20,9 +20,10 @@ go build -o goff-management .
 ./goff-management --config /etc/goff/management.yaml
 ```
 
-The server listens on `server.port` (8080 by default) and answers `GET /health` without a
-session, for liveness and readiness probes. It stops gracefully on `SIGTERM`, waiting up to
-`server.shutdownTimeout` for in-flight requests.
+The server listens on `server.port` (8080 by default) and answers two probes without a
+session: `GET /health` (liveness) is `200` while the process runs, and `GET /ready` (readiness)
+is `503` while the database doesn't answer a ping within 2s. It stops gracefully on `SIGTERM`,
+waiting up to `server.shutdownTimeout` for in-flight requests.
 
 ## Configuration
 

@@ -53,6 +53,7 @@ var routeCases = []struct {
 }{
 	// Public.
 	{"GET", "/health", anon, "", 200},
+	{"GET", "/ready", anon, "", 200},
 	{"GET", "/auth/login", anon, "", 302},
 	{"GET", "/auth/callback?state=s&code=c", anon, "", 400}, // no state cookie
 	{"POST", "/auth/logout", anon, "", 204},
@@ -428,6 +429,7 @@ func routesServer(t *testing.T) (*echo.Echo, *service.AuthService) {
 		Audit:      handler.NewAuditHandler(service.NewAuditService(auditRepo, companyRepo)),
 		Onboarding: handler.NewOnboardingHandler(service.NewOnboardingService(companyRepo, userRepo, auditRepo, false)),
 		Config:     handler.NewConfigHandler(cfg),
+		Ready:      db.Pool.Ping,
 	}
 	s := api.Services{Auth: authSvc, Companies: companySvc, Teams: teamSvc, Flagsets: flagsetSvc, Flags: flagSvc}
 	return api.New(cfg, slog.New(slog.DiscardHandler), h, s), authSvc
