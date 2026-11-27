@@ -81,11 +81,7 @@ func (s *FlagsetService) Create(
 	if err != nil {
 		return nil, err
 	}
-	key, err := newAPIKey()
-	if err != nil {
-		return nil, err
-	}
-	fs, k, err := s.repo.CreateWithAPIKey(ctx, teamID, req, "default", key, actorID)
+	fs, k, err := s.repo.CreateWithAPIKey(ctx, teamID, req, "default", newSecret("goff_"), actorID)
 	if err != nil {
 		return nil, writeError(err)
 	}
@@ -177,11 +173,7 @@ func (s *FlagsetService) CreateAPIKey(ctx context.Context, actorID, id, label st
 	if err != nil {
 		return nil, err
 	}
-	key, err := newAPIKey()
-	if err != nil {
-		return nil, err
-	}
-	k, err := s.repo.InsertAPIKey(ctx, id, label, key, actorID)
+	k, err := s.repo.InsertAPIKey(ctx, id, label, newSecret("goff_"), actorID)
 	if err != nil {
 		return nil, writeError(err)
 	}
@@ -229,11 +221,10 @@ func (s *FlagsetService) auditAPIKey(
 	_ = s.audit.Record(ctx, nil, in)
 }
 
-// newAPIKey returns a relay-proxy API key: "goff_" and 32 random bytes in hex.
-func newAPIKey() (string, error) {
+// newSecret returns prefix and 32 random bytes in hex: a flagset API key
+// ("goff_") or a relay proxy secret ("goff_rp_").
+func newSecret(prefix string) string {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return "goff_" + hex.EncodeToString(b), nil
+	_, _ = rand.Read(b) // never fails: crypto/rand crashes the program instead
+	return prefix + hex.EncodeToString(b)
 }

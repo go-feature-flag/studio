@@ -35,6 +35,7 @@ function mockApi(
     "/teams/t1/flagsets": () => ok({ id: "fs1", apiKeyCount }),
     "/flagsets/fs1/api-keys": () => ok({ id: "k1" }),
     "/flagsets/fs1/flags": () => ok({ id: "f1" }),
+    "/companies/c1/relay-proxy-secret": () => ok({ secret: "goff_rp_x", createdAt: "2026-11-27T10:00:00Z" }),
     ...overrides,
   };
   server.use(
@@ -133,6 +134,7 @@ describe("OnboardingSetupPage", () => {
           },
         },
       },
+      { path: "/companies/c1/relay-proxy-secret", body: {} },
     ]);
     expect(refreshIdentity).toHaveBeenCalled();
     expect(window.localStorage.getItem("activeCompanyId")).toBe("c1");
@@ -195,6 +197,7 @@ describe("OnboardingSetupPage", () => {
       "/teams/t1/flagsets",
       "/flagsets/fs1/api-keys",
       "/flagsets/fs1/flags",
+      "/companies/c1/relay-proxy-secret",
     ]);
   });
 });

@@ -28,6 +28,8 @@ func registerCompanyRoutes(g *echo.Group, h Handlers, s Services) {
 	scoped.GET("/teams", h.Companies.ListTeams, member)
 	scoped.POST("/teams", h.Companies.CreateTeam, admin)
 
-	// Holds every API key of the company, so company admins only.
-	scoped.GET("/relay-proxy-config", h.Flagsets.RelayProxyConfig, admin)
+	// The secret reads every flagset and API key of the company, so company admins only.
+	scoped.GET("/relay-proxy-secret", h.Companies.GetRelayProxySecret, admin)
+	scoped.POST("/relay-proxy-secret", h.Companies.RotateRelayProxySecret, admin)
+	scoped.DELETE("/relay-proxy-secret/previous", h.Companies.RevokePreviousRelayProxySecret, admin)
 }

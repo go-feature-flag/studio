@@ -259,12 +259,6 @@ func (r *FlagsetRepo) ListAPIKeys(ctx context.Context, flagsetID string) ([]mode
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.FlagsetAPIKey])
 }
 
-// DBTarget returns the host, port and database Studio itself connects to.
-func (r *FlagsetRepo) DBTarget() (host string, port uint16, database string) {
-	c := r.db.Pool.Config().ConnConfig
-	return c.Host, c.Port, c.Database
-}
-
 // ListForRelayProxy returns the live flagsets of a company with their API keys
 // (oldest first), or ErrNotFound when the company does not exist.
 func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) ([]model.RelayProxyFlagset, error) {
@@ -277,7 +271,7 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 		return nil, ErrNotFound
 	}
 	rows, err := r.db.Pool.Query(ctx, `
-		SELECT fs.id, fs.name, t.name AS team_name, fs.evaluation_context_enrichment,
+		SELECT fs.id, fs.name, fs.evaluation_context_enrichment,
 			`+relayProxyCols+`,
 			COALESCE(array_agg(k.api_key ORDER BY k.created_at, k.id) FILTER (WHERE k.api_key IS NOT NULL), '{}') AS api_keys,
 			fs.notifiers
@@ -291,6 +285,22 @@ func (r *FlagsetRepo) ListForRelayProxy(ctx context.Context, companyID string) (
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByName[model.RelayProxyFlagset])
+}
+
+// FlagsForRelayProxy returns the flags of a live flagset of the company as a
+// GO Feature Flag flag file (a JSON object of name → config, read from the
+// goff_flags view), or ErrNotFound when the company has no such flagset.
+func (r *FlagsetRepo) FlagsForRelayProxy(ctx context.Context, companyID, flagsetID string) (json.RawMessage, error) {
+	var flags json.RawMessage
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT (SELECT COALESCE(jsonb_object_agg(g.flag_name, g.config), '{}') FROM goff_flags g WHERE g.flagset = fs.id)
+		FROM flagsets fs
+		JOIN teams t ON t.id = fs.team_id
+		WHERE fs.id = $1 AND t.company_id = $2 AND fs.deleted_at IS NULL`, flagsetID, companyID).Scan(&flags)
+	if isNoRows(err) {
+		return nil, ErrNotFound
+	}
+	return flags, err
 }
 
 // GetNotifiers returns the notifiers of a live flagset.

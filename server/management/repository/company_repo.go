@@ -3,11 +3,16 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gofeatureflag/flag-management-system/server/management/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrRelayProxyPreviousSecretActive prevents a rotation from revoking a secret
+// that relay proxies may still be using during its grace period.
+var ErrRelayProxyPreviousSecretActive = errors.New("previous relay proxy secret is still valid")
 
 type CompanyRepo struct{ db *DB }
 
@@ -261,4 +266,93 @@ func (r *CompanyRepo) Membership(ctx context.Context, userID string) (*model.Com
 		return nil, err
 	}
 	return &m, nil
+}
+
+// SetRelayProxySecret replaces the company's relay proxy secret. With
+// keepPrevious > 0 the replaced secret stays valid that long. Rotation is
+// blocked until an existing previous secret expires or is explicitly revoked.
+func (r *CompanyRepo) SetRelayProxySecret(
+	ctx context.Context, companyID, secret string, keepPrevious time.Duration,
+) (*model.RelayProxySecret, error) {
+	s := model.RelayProxySecret{Secret: secret}
+	// SET expressions read the row before the update, so the previous secret
+	// is the one being replaced. The predicate is rechecked after concurrent
+	// updates, so a rotation cannot overwrite an active previous secret.
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE companies SET
+			relay_proxy_previous_secret = CASE WHEN $3 > 0 THEN relay_proxy_secret END,
+			relay_proxy_previous_secret_expires_at =
+				CASE WHEN $3 > 0 AND relay_proxy_secret IS NOT NULL THEN NOW() + make_interval(secs => $3) END,
+			relay_proxy_secret = $2, relay_proxy_secret_created_at = NOW()
+		WHERE id = $1 AND (relay_proxy_previous_secret IS NULL
+			OR relay_proxy_previous_secret_expires_at IS NULL
+			OR relay_proxy_previous_secret_expires_at <= NOW())
+		RETURNING relay_proxy_secret_created_at, relay_proxy_previous_secret_expires_at,
+			RIGHT(relay_proxy_previous_secret, 5)`,
+		companyID, secret, keepPrevious.Seconds()).Scan(&s.CreatedAt, &s.PreviousExpiresAt, &s.PreviousSecretEnd)
+	if err != nil {
+		if isNoRows(err) {
+			if _, lookupErr := r.GetByID(ctx, companyID); lookupErr != nil {
+				return nil, lookupErr
+			}
+			return nil, ErrRelayProxyPreviousSecretActive
+		}
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetRelayProxySecret returns the company's relay proxy secret, or nil, nil
+// when none was generated.
+func (r *CompanyRepo) GetRelayProxySecret(ctx context.Context, companyID string) (*model.RelayProxySecret, error) {
+	var secret, previousEnd *string
+	var createdAt, previousExpiresAt *time.Time
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT relay_proxy_secret, relay_proxy_secret_created_at,
+			CASE WHEN relay_proxy_previous_secret_expires_at > NOW() THEN relay_proxy_previous_secret_expires_at END,
+			CASE WHEN relay_proxy_previous_secret_expires_at > NOW() THEN RIGHT(relay_proxy_previous_secret, 5) END
+		FROM companies WHERE id = $1`, companyID,
+	).Scan(&secret, &createdAt, &previousExpiresAt, &previousEnd)
+	if err != nil {
+		if isNoRows(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if secret == nil || createdAt == nil {
+		return nil, nil
+	}
+	return &model.RelayProxySecret{
+		Secret: *secret, CreatedAt: *createdAt, PreviousExpiresAt: previousExpiresAt, PreviousSecretEnd: previousEnd,
+	}, nil
+}
+
+// RevokePreviousRelayProxySecret stops accepting the secret the last rotation
+// replaced, before its expiry.
+func (r *CompanyRepo) RevokePreviousRelayProxySecret(ctx context.Context, companyID string) error {
+	tag, err := r.db.Pool.Exec(ctx, `
+		UPDATE companies SET relay_proxy_previous_secret = NULL, relay_proxy_previous_secret_expires_at = NULL
+		WHERE id = $1`, companyID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// IDByRelayProxySecret returns the company holding secret, as its current
+// secret or a previous one not expired yet, or ErrNotFound.
+func (r *CompanyRepo) IDByRelayProxySecret(ctx context.Context, secret string) (string, error) {
+	var id string
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT id FROM companies
+		WHERE relay_proxy_secret = $1
+			OR (relay_proxy_previous_secret = $1 AND relay_proxy_previous_secret_expires_at > NOW())`,
+		secret).Scan(&id)
+	if isNoRows(err) {
+		return "", ErrNotFound
+	}
+	return id, err
 }

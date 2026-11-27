@@ -40,7 +40,7 @@ type Services struct {
 func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo {
 	e := echo.New()
 	e.Logger = log
-	e.IPExtractor = ipExtractor(cfg.Server)
+	configureProxyExtractors(e, cfg.Server)
 	// First, so the route reaches otelhttp before any middleware swaps the request.
 	e.Use(middleware.RouteTelemetry())
 	// Tag every log line written through c.Logger() with the request id.
@@ -74,7 +74,7 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 				http.MethodGet, http.MethodPost, http.MethodPut,
 				http.MethodPatch, http.MethodDelete, http.MethodOptions,
 			},
-			AllowHeaders:  []string{echo.HeaderContentType, echo.HeaderAccept},
+			AllowHeaders:  []string{echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 			ExposeHeaders: []string{echo.HeaderXRequestID},
 		}))
 		_ = cop.AddTrustedOrigin(origin) // same validation as CORS, which already panicked on a bad origin
@@ -126,6 +126,13 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	// Public: the webui reads it before login.
 	e.GET("/api/v1/config", h.Config.Get)
 
+	// Read by GO Feature Flag relay proxies, authenticated with their company's
+	// secret instead of a session.
+	relayProxy := e.Group("/api/v1/relay-proxy", apiHeaders, middleware.ValidIDs(),
+		middleware.RequireRelayProxySecret(s.Companies))
+	relayProxy.GET("/flagsets.json", h.Flagsets.RelayProxyFlagSets)
+	relayProxy.GET("/flagsets/:id/flags.json", h.Flagsets.RelayProxyFlags)
+
 	auth := middleware.RequireAuth(s.Auth, middleware.SessionCookieName(cfg.Auth))
 
 	// Off by default; when on, still requires a session (it is HTML served on
@@ -148,20 +155,20 @@ func New(cfg config.Config, log *slog.Logger, h Handlers, s Services) *echo.Echo
 	return e
 }
 
-// ipExtractor resolves c.RealIP(). Without trusted proxies it is the socket
-// address (nil: echo's default). With them, the nearest X-Forwarded-For hop
-// outside those ranges, so a client can't spoof its IP by sending the header:
-// echo's own trust of private, loopback and link-local peers is turned off.
-func ipExtractor(cfg config.ServerConfig) echo.IPExtractor {
+// Both client IPs and generated retriever URLs must use the configured proxy
+// boundary, not Echo's implicit trust of private, loopback and link-local peers.
+func configureProxyExtractors(e *echo.Echo, cfg config.ServerConfig) {
+	e.SchemeExtractor = echo.ExtractSchemeDirect()
 	nets, _ := cfg.TrustedProxyNets() // Validate already rejected bad entries
 	if len(nets) == 0 {
-		return nil
+		return
 	}
 	opts := []echo.TrustOption{echo.TrustLoopback(false), echo.TrustLinkLocal(false), echo.TrustPrivateNet(false)}
 	for _, n := range nets {
 		opts = append(opts, echo.TrustIPRange(n))
 	}
-	return echo.ExtractIPFromXFFHeader(opts...)
+	e.IPExtractor = echo.ExtractIPFromXFFHeader(opts...)
+	e.SchemeExtractor = echo.ExtractSchemeFromHeaders(opts...)
 }
 
 // rateLimit caps each identifier (default: client IP) at perSec requests per

@@ -41,10 +41,13 @@ vi.mock("@/components/refine-ui/views/list-view", () => ({
 
 // Keys, notifiers and danger zone have their own tests and their own actions; stub them.
 // The editable sections stay real: the page owns their draft and save bar.
-type TabProps = { canManage?: boolean };
+type TabProps = { canManage?: boolean; onSaved?: () => void };
 const { stub } = vi.hoisted(() => ({
   stub: (name: string) => (p: TabProps) => (
-    <div data-testid={name}>{JSON.stringify({ canManage: p.canManage })}</div>
+    <>
+      <div data-testid={name}>{JSON.stringify({ canManage: p.canManage })}</div>
+      {p.onSaved && <button onClick={p.onSaved}>{`${name} saved`}</button>}
+    </>
   ),
 }));
 vi.mock("./settings-api-keys-tab", () => ({ ApiKeysTab: stub("keys") }));
@@ -73,6 +76,7 @@ const testingCtx = () => screen.getByDisplayValue(/targetingKey/) as HTMLTextAre
 const pollingInput = () => screen.getByLabelText("flagset.settings.pollingInterval") as HTMLInputElement;
 const enrichValue = () => screen.getByPlaceholderText("flagset.value") as HTMLInputElement;
 const saveBtn = () => screen.queryByRole("button", { name: "flagset.settings.saveChanges" });
+const restartBanner = () => screen.queryByText("flagset.settings.restartRequired.title");
 const openTab = (label: string) => fireEvent.click(screen.getByRole("button", { name: label }));
 
 const renderAt = (path = "/flagsets/fs-1") =>
@@ -224,6 +228,8 @@ describe("FlagsetSettingsPage", () => {
     expect(opts.url).toMatch(/\/flagsets\/fs-1$/);
     expect(opts.values).toEqual({ name: "production", evaluationContextEnrichment: { limit: 2 } });
     expect(h.toastSuccess).toHaveBeenCalledWith("flagset.settings.saved");
+    // The enrichment needs a relay proxy restart; the name alone would not.
+    expect(restartBanner()).toBeInTheDocument();
     expect(h.refetch).toHaveBeenCalled();
     // Refetch is mocked to return the old flagset, so once the draft is
     // dropped the form mirrors it again and the bar goes away.
@@ -232,6 +238,7 @@ describe("FlagsetSettingsPage", () => {
   });
 
   it("sends an edited description, capped natively", () => {
+    h.mutate.mockImplementation((_o, cbs) => cbs.onSuccess());
     renderAt();
     const desc = screen.getByLabelText("common.description");
     expect(nameInput()).toHaveAttribute("maxLength", "120");
@@ -239,6 +246,9 @@ describe("FlagsetSettingsPage", () => {
     fireEvent.change(desc, { target: { value: "Live" } });
     fireEvent.click(saveBtn()!);
     expect(h.mutate.mock.calls[0][0].values).toEqual({ description: "Live" });
+    // Studio-only field: no relay proxy restart to mention.
+    expect(h.toastSuccess).toHaveBeenCalledWith("flagset.settings.saved");
+    expect(restartBanner()).toBeNull();
   });
 
   it("sends the polling interval as a number and links its docs", () => {
@@ -262,6 +272,7 @@ describe("FlagsetSettingsPage", () => {
   ];
   for (const tt of relayEdits) {
     it(`relay proxy: ${tt.name}`, () => {
+      h.mutate.mockImplementation((_o, cbs) => cbs.onSuccess());
       renderAt();
       const control = screen.getByLabelText(tt.label);
       // Each control is described by the hint shown above/beside it.
@@ -270,8 +281,19 @@ describe("FlagsetSettingsPage", () => {
       else fireEvent.change(control, { target: { value: tt.value } });
       fireEvent.click(saveBtn()!);
       expect(h.mutate.mock.calls[0][0].values).toEqual(tt.want);
+      expect(restartBanner()).toBeInTheDocument();
     });
   }
+
+  it("asks to restart relay proxies after a notifier save, until dismissed", () => {
+    renderAt();
+    openTab("flagset.settings.notifiers.title");
+    expect(restartBanner()).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "notifiers saved" }));
+    expect(restartBanner()).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "common.dismiss" }));
+    expect(restartBanner()).toBeNull();
+  });
 
   it("caps the environment natively", () => {
     renderAt();

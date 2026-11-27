@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -290,6 +291,8 @@ func TestFlagsetRepoQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.ListForRelayProxy(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
+	_, err = repo.FlagsForRelayProxy(ctx, id, id)
+	assert.ErrorIs(t, err, context.Canceled)
 	_, err = repo.GetNotifiers(ctx, id)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.ErrorIs(t, repo.UpdateNotifiers(ctx, id, []model.Notifier{}), context.Canceled)
@@ -335,14 +338,14 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 	got[2].EvaluationContextEnrichment = nil // jsonb reformats it; compared above
 	defaults := model.RelayProxySettings{PollingInterval: 60000}
 	assert.Equal(t, []model.RelayProxyFlagset{
-		{ID: keyless.ID, Name: "empty", TeamName: "Platform", APIKeys: []string{}, RelayProxySettings: defaults,
+		{ID: keyless.ID, Name: "empty", APIKeys: []string{}, RelayProxySettings: defaults,
 			Notifiers: []model.Notifier{}},
 		{
-			ID: prod.ID, Name: "prod", TeamName: "Platform", APIKeys: []string{"goff_first", "goff_second"},
+			ID: prod.ID, Name: "prod", APIKeys: []string{"goff_first", "goff_second"},
 			RelayProxySettings: defaults, Notifiers: []model.Notifier{},
 		},
 		{
-			ID: dev.ID, Name: "dev", TeamName: "Web", APIKeys: []string{"goff_dev"},
+			ID: dev.ID, Name: "dev", APIKeys: []string{"goff_dev"},
 			RelayProxySettings: model.RelayProxySettings{PollingInterval: 5000, Environment: "development"},
 			Notifiers:          notifiers,
 		},
@@ -350,14 +353,47 @@ func TestFlagsetRepoListForRelayProxy(t *testing.T) {
 
 	_, err = repo.ListForRelayProxy(ctx, "00000000-0000-0000-0000-000000000000")
 	assert.ErrorIs(t, err, repository.ErrNotFound)
+}
 
-	host, port, database := repo.DBTarget()
-	cfg := db.Pool.Config().ConnConfig
-	assert.Equal(t, cfg.Host, host)
-	assert.Equal(t, cfg.Port, port)
-	assert.Equal(t, cfg.Database, database)
-	assert.NotEmpty(t, host)
-	assert.NotEmpty(t, database)
+func TestFlagsetRepoFlagsForRelayProxy(t *testing.T) {
+	db := testutil.StartPostgres(t)
+	repo := repository.NewFlagsetRepo(db)
+	acme := testutil.SeedCompany(t, db, "Acme")
+	team := testutil.SeedTeam(t, db, acme.ID, "Platform")
+	withFlags := testutil.SeedFlagset(t, db, team.ID, "prod")
+	empty := testutil.SeedFlagset(t, db, team.ID, "empty")
+	deleted := testutil.SeedFlagset(t, db, team.ID, "gone")
+	testutil.SeedFlag(t, db, withFlags.ID, "on", nil, nil)
+	off := testutil.SeedFlag(t, db, withFlags.ID, "off", nil, nil)
+	_, err := db.Pool.Exec(t.Context(), `UPDATE flags SET disabled = TRUE WHERE id = $1`, off.ID)
+	require.NoError(t, err)
+	require.NoError(t, repo.SoftDelete(t.Context(), deleted.ID))
+	otherTeam := testutil.SeedTeam(t, db, testutil.SeedCompany(t, db, "Other").ID, "Platform")
+	foreign := testutil.SeedFlagset(t, db, otherTeam.ID, "other")
+	payload := strings.TrimSuffix(testutil.DefaultFlagPayload, "}")
+
+	tests := []struct {
+		name      string
+		flagsetID string
+		want      string
+		wantErr   error
+	}{
+		{"flags keyed by name, disable merged in", withFlags.ID,
+			`{"on":` + payload + `,"disable":false},"off":` + payload + `,"disable":true}}`, nil},
+		{"flagset without flags", empty.ID, `{}`, nil},
+		{"deleted flagset", deleted.ID, "", repository.ErrNotFound},
+		{"flagset of another company", foreign.ID, "", repository.ErrNotFound},
+		{"unknown flagset", "00000000-0000-0000-0000-000000000000", "", repository.ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := repo.FlagsForRelayProxy(t.Context(), acme.ID, tt.flagsetID)
+			assert.ErrorIs(t, err, tt.wantErr)
+			if tt.want != "" {
+				assert.JSONEq(t, tt.want, string(got))
+			}
+		})
+	}
 }
 
 func TestFlagsetRepoCreateWithAPIKey(t *testing.T) {

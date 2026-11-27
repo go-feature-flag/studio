@@ -94,6 +94,10 @@ Terminate TLS at the proxy and forward to the server over http.
   Behind a proxy the socket address is the proxy's, so every user would share one bucket.
   List the proxy ranges in `server.trustedProxies`; the server then reads the client from
   `X-Forwarded-For`, trusting only hops inside those ranges.
+- **Scheme and host.** Preserve the original `Host` and overwrite `X-Forwarded-Proto`
+  with the external scheme (`https` when terminating TLS). Studio accepts forwarded
+  scheme headers only from `server.trustedProxies`; configure those ranges for private
+  and public proxies alike. Relay proxy retriever URLs use this scheme and host.
 - **HSTS.** With `auth.cookieSecure` on, the server sends `Strict-Transport-Security`.
 
 ## Sessions and cookies
@@ -122,6 +126,51 @@ origin is the only one allowed to call the API with credentials (CORS) and to se
   this mode: revoke their access at the identity provider instead.
 - **Multi company** (`server.multiCompany=true`): super admins create companies, each with a
   first admin, and company admins add users by email.
+
+## Connecting relay proxies
+
+GO Feature Flag relay proxies (v1.59.0 or later) can load their flagsets from Studio, so
+flag changes reach them without a configuration file to maintain.
+
+1. As a company admin, open **Company → Relay proxy**. Onboarding already generated the
+   company's relay proxy secret; generate one there otherwise
+   (`POST /api/v1/companies/{companyId}/relay-proxy-secret`).
+2. Copy the snippet shown there into the relay proxy's `goff-proxy.yaml`, and remove any
+   `flagSets` key from that file (the relay proxy refuses both together):
+
+   ```yaml
+   studio:
+     url: https://studio.example.com/api/v1/relay-proxy/flagsets.json
+     headers:
+       Authorization:
+         - Bearer <relay proxy secret>
+   ```
+
+Studio answers with every flagset of the company that has an API key. Each flagset reads its
+flags back from Studio with an `http` retriever, on the host the relay proxy used in
+`studio.url` and with the same secret, so the relay proxy needs no database access. Use a URL
+the relay proxy can reach (a service or network name works), and keep `/api/v1/relay-proxy`
+reachable through your reverse proxy.
+
+Flag changes reach relay proxies on their next poll of each flagset. A running relay proxy
+also applies new or removed flagsets and API keys, with two current relay-proxy limitations:
+
+- A change to a flagset's settings or notifiers only applies after restart. While such a
+  change is pending, API-key updates for that flagset are also ignored, including revocations.
+  Restart affected relay proxies before relying on those key changes.
+- An empty flagset list is rejected. Removing the company's final keyed flagset, or revoking
+  its final API key, leaves running proxies using their previous configuration and keys.
+  Stop those proxies to prevent further evaluations; they cannot start from Studio again
+  until it has at least one flagset with an API key. The same startup requirement applies
+  to a new company.
+
+To rotate the secret without downtime, choose how long the current one stays valid (up to 30
+days) when you click **Rotate secret**. Both secrets work during that time, so update each relay
+proxy's configuration with the new one and restart it; the page shows when the old secret
+expires and lets you revoke it early. Another rotation is blocked until that previous secret
+expires or you explicitly revoke it. Rotating with "Revoke immediately" prevents relay proxies
+using the old secret from fetching further configuration and flags; it does not stop them
+evaluating cached flags.
 
 ## Observability
 
