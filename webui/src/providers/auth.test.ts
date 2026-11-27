@@ -205,6 +205,12 @@ describe("authProvider edge cases", () => {
       cleared: true,
     },
     {
+      name: "bearer credential rejection preserves the administrator session",
+      error: new HttpError("relay secret expired", 401, undefined, "bearer"),
+      want: {},
+      cleared: false,
+    },
+    {
       name: "403 is left to the caller",
       error: new HttpError("forbidden", 403),
       want: {},

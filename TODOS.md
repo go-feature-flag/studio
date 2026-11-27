@@ -9,7 +9,8 @@ Known follow-ups, most important first. Each item is tagged with the area it tou
 
 ## P0 — Security holes and deploy blockers
 
-_Nothing open._
+- [ ] **[Relay proxy] Accept empty remote flagset configurations upstream before relying on final-key revocation.** Studio returns `{"flagSets":[]}` when the last keyed flagset is removed or its last key is revoked. GO Feature Flag v1.59.0 and the reviewed latest image reject that document and retain the previous flagset and API keys, allowing cached flag evaluations with a revoked key. Add upstream support for empty Studio mode that clears running clients/key mappings, then cover last-key and last-flagset removal in Studio's real relay-proxy integration test and require the fixed relay version.
+- [ ] **[Relay proxy] Apply API-key revocations independently of pending settings changes upstream.** After a settings/notifier edit, the relay proxy rejects updates to that flagset's API keys as part of the unsupported settings change, so revoked keys remain usable until restart. Fix upstream reconciliation to update key routing while retaining startup settings; add an integration regression and require the fixed version. Studio's notices now document the limitation; restart affected relay proxies before relying on revocation.
 
 ## P1 — Correctness bugs
 
@@ -33,6 +34,7 @@ _Nothing open._
     - pausing a rollout
 
 - [ ] **[Notifiers] Send a test message from the notifier dialog.** The design has a "Send test message" button, left out because it needs `POST /flagsets/:id/notifiers/test` making outbound requests from Studio to user-given URLs. Add it with SSRF guards (block private and link-local addresses, short timeout, no redirects) and reuse the relay proxy's payload shape.
+- [ ] **[Server] Add an optional `server.publicUrl` once Studio builds links outside a request.** Today every URL comes from the caller: the webui calls a relative `/api/v1`, the relay proxy snippet uses `window.location.origin`, and relay proxy retriever URLs use the request's scheme and `Host`. That breaks as soon as Studio sends links with no request to read from (notifier messages linking back to a flag, emails). Add `server.publicUrl` (`GOFF_MGMT_SERVER_PUBLICURL`, an absolute http(s) URL) and default `oidc.redirectUrl` from it, so admins don't repeat the public host. Keep relay proxy retriever URLs request-derived, since relay proxies often reach Studio on an internal address; use the public URL there only as a fallback.
 - [ ] **[Roles] Rename `User.Role()`.** It returns a `CompanyRole`, while `Role` is also the name of the team role type, so callers can mix the two up. Something like `CompanyRoleOrEmpty()` is clearer.
 - [ ] **[Roles] Fill two test gaps.** No `AtLeast` test checks that an unknown role (e.g. `Role("owner").AtLeast(RoleViewer)`) is denied, for team or company roles. `TestNewMeResponse` doesn't cover a user with `CompanyID` set but `CompanyRole` nil, which would return `company.role: ""`; the `users_company_role_pair` CHECK rules that state out in the DB, but the Go side has no test for it.
 - [ ] **[Handlers] Make the `params` test helper reject an odd argument count.** A trailing key without a value is dropped silently, so a test can pass with an empty path param.

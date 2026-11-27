@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// Flagset groups flags served to relay proxies through its API keys. How a
-// relay proxy retrieves and exports is configured in the relay proxy itself;
-// its notifiers come from Studio (see Notifier).
+// Flagset groups flags served to relay proxies through its API keys. Relay
+// proxies load it from Studio with its flags, notifiers and RelayProxySettings
+// (see RelayProxyFlagSet); how they export is configured in the relay proxy.
 type Flagset struct {
 	ID          string `db:"id" json:"id"`
 	TeamID      string `db:"team_id" json:"teamId"`
@@ -30,7 +30,7 @@ type Flagset struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updatedAt"`
 }
 
-// RelayProxySettings are the flagset's options in the generated goff-proxy.yaml
+// RelayProxySettings are the flagset's options in the relay proxy configuration
 // (its flagSets[] entry, same names); the defaults are the relay proxy's.
 type RelayProxySettings struct {
 	// PollingInterval is how often, in milliseconds, the relay proxy reloads
@@ -91,10 +91,9 @@ type CreateAPIKeyRequest struct {
 // RelayProxyFlagset is a live flagset with its API keys and notifiers, as
 // needed to write a relay proxy configuration.
 type RelayProxyFlagset struct {
-	ID       string   `db:"id" json:"id"`
-	Name     string   `db:"name" json:"name"`
-	TeamName string   `db:"team_name" json:"teamName"`
-	APIKeys  []string `db:"api_keys" json:"apiKeys"`
+	ID      string   `db:"id" json:"id"`
+	Name    string   `db:"name" json:"name"`
+	APIKeys []string `db:"api_keys" json:"apiKeys"`
 	// EvaluationContextEnrichment is a JSON object, or empty when unset.
 	EvaluationContextEnrichment json.RawMessage `db:"evaluation_context_enrichment" json:"evaluationContextEnrichment,omitempty"` //nolint:lll // struct tags cannot be wrapped
 	Notifiers                   []Notifier      `db:"notifiers" json:"notifiers"`

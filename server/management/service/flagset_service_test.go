@@ -3,7 +3,6 @@ package service_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -242,33 +241,6 @@ func TestFlagsetServiceQueryErrors(t *testing.T) {
 	assert.ErrorIs(t, svc.DeleteAPIKey(ctx, id, id, id), context.Canceled)
 }
 
-func TestFlagsetServiceRelayProxyConfig(t *testing.T) {
-	db := testutil.StartPostgres(t)
-	svc := newFlagsetService(db)
-	ctx := t.Context()
-	team := seedTeamForFlagset(t, db)
-	actor := testutil.SeedUser(t, db, "actor@acme.com", "Actor", true)
-	fs, err := svc.Create(ctx, actor.ID, team.ID, &model.CreateFlagsetRequest{Name: "prod"})
-	require.NoError(t, err)
-	keys, err := svc.ListAPIKeys(ctx, fs.ID)
-	require.NoError(t, err)
-	require.Len(t, keys, 1)
-
-	t.Run("renders the company's flagsets on Studio's database", func(t *testing.T) {
-		out, err := svc.RelayProxyConfig(ctx, team.CompanyID)
-		require.NoError(t, err)
-		cfg := db.Pool.Config().ConnConfig
-		assert.Contains(t, out, `- name: "`+fs.ID+`"`+"\n    pollingInterval: 60000\n")
-		assert.Contains(t, out, `- "`+keys[0].APIKey+`"`)
-		assert.Contains(t, out, fmt.Sprintf("@%s:%d/%s", cfg.Host, cfg.Port, cfg.Database))
-	})
-
-	t.Run("unknown company -> not found", func(t *testing.T) {
-		_, err := svc.RelayProxyConfig(ctx, "00000000-0000-0000-0000-000000000000")
-		assert.ErrorIs(t, err, service.ErrNotFound)
-	})
-}
-
 func TestFlagsetServiceNotifiers(t *testing.T) {
 	db := testutil.StartPostgres(t)
 	svc := newFlagsetService(db)
@@ -330,7 +302,7 @@ func TestFlagsetServiceNotifiers(t *testing.T) {
 		})
 	}
 
-	t.Run("audit and relay proxy config", func(t *testing.T) {
+	t.Run("audit and relay proxy flagSets", func(t *testing.T) {
 		_, err := svc.ReplaceNotifiers(ctx, actor.ID, fs.ID, ns)
 		require.NoError(t, err)
 		var after string
@@ -340,10 +312,11 @@ func TestFlagsetServiceNotifiers(t *testing.T) {
 		assert.NotContains(t, after, "top-secret", "secrets stay out of the audit log")
 		assert.NotContains(t, after, "audit.example", "URLs stay out of the audit log")
 
-		cfg, err := svc.RelayProxyConfig(ctx, team.CompanyID)
+		file, err := svc.RelayProxyFlagSets(ctx, team.CompanyID, func(string) string { return "" }, "")
 		require.NoError(t, err)
-		assert.Contains(t, cfg, `webhookUrl: "https://hooks.slack.com/x"`)
-		assert.NotContains(t, cfg, "audit.example", "a disabled notifier is left out")
+		require.Len(t, file.FlagSets, 1)
+		assert.Equal(t, []model.RelayProxyNotifier{{Kind: model.NotifierSlack, WebhookURL: "https://hooks.slack.com/x"}},
+			file.FlagSets[0].Notifiers, "a disabled notifier is left out")
 	})
 
 	t.Run("list missing flagset", func(t *testing.T) {

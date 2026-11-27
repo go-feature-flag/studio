@@ -6,7 +6,9 @@
 // @description Every route except GET /config and POST /auth/logout requires the HttpOnly `goff_mgmt_session`
 // @description session cookie set by the OIDC login (GET /auth/login, outside this base path;
 // @description see docs/reference/api.md)
-// @description and answers 401 without it. Errors use the `{message, errors?}` envelope (model.APIResponse).
+// @description and answers 401 without it. The /relay-proxy routes take a company's relay proxy secret instead
+// @description (`Authorization: Bearer <secret>`), for GO Feature Flag relay proxies.
+// @description Errors use the `{message, errors?}` envelope (model.APIResponse).
 // @BasePath    /api/v1
 package main
 

@@ -24,7 +24,12 @@ flagset).
 The session cookie is `__Host-goff_mgmt_session`, or `goff_mgmt_session` when
 `auth.cookieDomain` is set or cookies aren't `Secure` (see the
 [deployment guide](../deployment.md#sessions-and-cookies)). Every `/api/v1` route except
-`/config` and logout answers **401** without a valid session.
+`/config`, logout and `/relay-proxy` answers **401** without a valid session.
+
+The `/api/v1/relay-proxy` routes are for GO Feature Flag relay proxies, not users: they take
+the company's relay proxy secret as `Authorization: Bearer <secret>` and answer **401**
+without it. Their bodies are the relay proxy files themselves, without the envelope below
+(see the [deployment guide](../deployment.md#connecting-relay-proxies)).
 
 Login and callback are rate limited to 5 requests per second per client IP (**429**). No auth
 response is cacheable.

@@ -13,12 +13,15 @@ import {
   FlagIcon,
   KeyRoundIcon,
   SaveIcon,
+  RotateCwIcon,
   SettingsIcon,
   Undo2Icon,
+  XIcon,
   ZapIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ListView } from "@/components/refine-ui/views/list-view";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +68,17 @@ const PLAIN_FIELDS = [
   "disableNotifierOnInit",
   "environment",
 ] as const;
+
+// Fields a running relay proxy ignores until it restarts: it only reloads
+// added, removed (so renamed) flagsets and API keys at runtime.
+const RESTART_FIELDS = [
+  "evaluationContextEnrichment",
+  "pollingInterval",
+  "startWithRetrieverError",
+  "enablePollingJitter",
+  "disableNotifierOnInit",
+  "environment",
+];
 
 // Bounds enforced by the API (model.MinPollingInterval/MaxPollingInterval).
 const MIN_POLLING_INTERVAL = 1000;
@@ -118,6 +132,8 @@ export function FlagsetSettingsPage() {
   // Bumped to reseed the enrichment editor (it keeps its own row state).
   const [editorKey, setEditorKey] = useState(0);
   const [saving, setSaving] = useState(false);
+  // Set by a save the running relay proxies ignore; stays until dismissed.
+  const [restartNeeded, setRestartNeeded] = useState(false);
   const { setWarnWhen } = useWarnAboutChange();
 
   const teamId = flagset?.teamId;
@@ -190,6 +206,7 @@ export function FlagsetSettingsPage() {
     setEditorKey((k) => k + 1);
   };
   const onSave = () => {
+    const needsRestart = RESTART_FIELDS.some((k) => k in changes);
     setSaving(true);
     mutate(
       {
@@ -202,6 +219,7 @@ export function FlagsetSettingsPage() {
       {
         onSuccess: async () => {
           toast.success(t("flagset.settings.saved"));
+          if (needsRestart) setRestartNeeded(true);
           await query.refetch();
           discard();
           setSaving(false);
@@ -246,6 +264,23 @@ export function FlagsetSettingsPage() {
           )}
         </div>
 
+        {restartNeeded && (
+          <Alert variant="warning">
+            <RotateCwIcon />
+            <AlertTitle>{t("flagset.settings.restartRequired.title")}</AlertTitle>
+            <AlertDescription>{t("flagset.settings.restartRequired.description")}</AlertDescription>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 size-7"
+              aria-label={t("common.dismiss")}
+              onClick={() => setRestartNeeded(false)}
+            >
+              <XIcon />
+            </Button>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[184px_1fr]">
           <nav className="flex flex-col gap-1 md:sticky md:top-4 md:self-start">
             {tabs.map((tb) => (
@@ -274,7 +309,9 @@ export function FlagsetSettingsPage() {
               <>
                 {shownTab === "keys" && <ApiKeysTab flagsetId={id} canManage={canManage} />}
                 {/* Notifiers save on their own (PUT of the whole list), outside the save bar. */}
-                {shownTab === "notifiers" && <NotifiersTab flagsetId={id} canManage={canManage} />}
+                {shownTab === "notifiers" && (
+                  <NotifiersTab flagsetId={id} canManage={canManage} onSaved={() => setRestartNeeded(true)} />
+                )}
                 {/* Kept mounted while hidden so in-progress enrichment rows
                     (incl. invalid ones the draft can't hold) survive tab switches. */}
                 <div className={cn(shownTab !== "context" && "hidden")}>
